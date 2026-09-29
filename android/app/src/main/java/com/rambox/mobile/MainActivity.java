@@ -25,6 +25,7 @@ import java.io.File;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
@@ -179,6 +180,26 @@ public class MainActivity extends BridgeActivity {
                         Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl));
                         startActivity(browserIntent);
                     } catch (Exception ignored) {}
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void clearAppData() {
+            runOnUiThread(() -> {
+                try {
+                    WebView wv = getBridge().getWebView();
+                    if (wv != null) {
+                        wv.clearCache(true);
+                        wv.clearHistory();
+                        wv.clearFormData();
+                    }
+                    CookieManager.getInstance().removeAllCookies(null);
+                    CookieManager.getInstance().flush();
+                    WebStorage.getInstance().deleteAllData();
+                    Log.d(TAG, "Application data cleared successfully via Native Bridge.");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error clearing app data", e);
                 }
             });
         }

@@ -1,15 +1,49 @@
-import React, { useState } from 'react';
-import { Plus, ChevronLeft, ChevronRight, X, Trash2, RotateCw, Sparkles, Globe } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Plus, ChevronLeft, ChevronRight, X, Trash2, RotateCw, 
+  Sparkles, Settings, GripHorizontal, Move 
+} from 'lucide-react';
 
 export default function DynamicIsland({ 
   apps, activeAppId, setActiveAppId, onRemoveApp,
-  onOpenServicesModal, onCheckUpdates, onReloadActive
+  onOpenServicesModal, onOpenSettingsModal, onCheckUpdates, onReloadActive,
+  hideLabels = false
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [appToDelete, setAppToDelete] = useState(null);
+  const [position, setPosition] = useState(null); // { x, y } or null for default top-center
+  const [isDragging, setIsDragging] = useState(false);
+
+  const islandRef = useRef(null);
+  const dragInfoRef = useRef({
+    isDown: false,
+    hasMoved: false,
+    startX: 0,
+    startY: 0,
+    elemStartX: 0,
+    elemStartY: 0
+  });
 
   const activeApp = apps.find(a => a.id === activeAppId) || apps[0];
   const activeIndex = apps.findIndex(a => a.id === activeAppId);
+
+  // Load saved position from localStorage
+  useEffect(() => {
+    try {
+      const savedPos = localStorage.getItem('rambox_dynamic_island_pos');
+      if (savedPos) {
+        const parsed = JSON.parse(savedPos);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          // Clamp to current screen bounds
+          const clampedX = Math.max(8, Math.min(window.innerWidth - 220, parsed.x));
+          const clampedY = Math.max(8, Math.min(window.innerHeight - 60, parsed.y));
+          setPosition({ x: clampedX, y: clampedY });
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read saved position', e);
+    }
+  }, []);
 
   const handleNextApp = (e) => {
     e.stopPropagation();
@@ -23,30 +57,140 @@ export default function DynamicIsland({
     setActiveAppId(apps[prevIdx].id);
   };
 
+  const resetPosition = (e) => {
+    if (e) e.stopPropagation();
+    setPosition(null);
+    localStorage.removeItem('rambox_dynamic_island_pos');
+  };
+
+  // Drag handlers using Pointer Events (seamless on both touch and mouse)
+  const onPointerDown = (e) => {
+    // Only drag from primary button / single touch, ignore clicks on buttons or delete dialog
+    if (e.target.closest('button') || e.target.closest('input') || appToDelete) return;
+
+    const el = islandRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    dragInfoRef.current = {
+      isDown: true,
+      hasMoved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      elemStartX: rect.left,
+      elemStartY: rect.top
+    };
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (_) {}
+  };
+
+  const onPointerMove = (e) => {
+    if (!dragInfoRef.current.isDown) return;
+
+    const dx = e.clientX - dragInfoRef.current.startX;
+    const dy = e.clientY - dragInfoRef.current.startY;
+
+    if (!dragInfoRef.current.hasMoved && Math.hypot(dx, dy) > 6) {
+      dragInfoRef.current.hasMoved = true;
+      setIsDragging(true);
+    }
+
+    if (dragInfoRef.current.hasMoved) {
+      const el = islandRef.current;
+      const elWidth = el ? el.offsetWidth : 240;
+      const elHeight = el ? el.offsetHeight : 48;
+
+      const maxX = Math.max(10, window.innerWidth - elWidth - 10);
+      const maxY = Math.max(10, window.innerHeight - elHeight - 10);
+
+      const newX = Math.max(10, Math.min(maxX, dragInfoRef.current.elemStartX + dx));
+      const newY = Math.max(10, Math.min(maxY, dragInfoRef.current.elemStartY + dy));
+
+      setPosition({ x: newX, y: newY });
+    }
+  };
+
+  const onPointerUp = (e) => {
+    if (!dragInfoRef.current.isDown) return;
+
+    const hadMoved = dragInfoRef.current.hasMoved;
+    dragInfoRef.current.isDown = false;
+    setIsDragging(false);
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    if (hadMoved && position) {
+      localStorage.setItem('rambox_dynamic_island_pos', JSON.stringify(position));
+    } else {
+      // It was a tap/click, toggle island expansion!
+      setIsExpanded(prev => !prev);
+    }
+  };
+
+  // Calculate container style
+  const floatingStyle = position ? {
+    position: 'fixed',
+    left: `${position.x}px`,
+    top: `${position.y}px`,
+    transform: 'none',
+    zIndex: 1000,
+    touchAction: 'none'
+  } : {
+    position: 'fixed',
+    top: '12px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 1000,
+    touchAction: 'none'
+  };
+
   return (
     <>
-      {/* Dynamic Island Floating Header */}
-      <div className="fixed top-2.5 left-1/2 -translate-x-1/2 z-50 pt-safe pointer-events-none w-full max-w-sm px-3 flex flex-col items-center">
+      {/* Draggable Dynamic Island Capsule */}
+      <div 
+        ref={islandRef}
+        style={floatingStyle}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className={`select-none cursor-grab active:cursor-grabbing transition-[shadow,border-color] duration-200 ${
+          isDragging ? 'opacity-90 scale-[1.02] shadow-[0_20px_50px_rgba(0,0,0,0.85)]' : ''
+        }`}
+      >
         <div
-          onClick={() => setIsExpanded(!isExpanded)}
-          className={`bg-[#181828]/95 backdrop-blur-2xl border border-white/20 text-white pointer-events-auto transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] shadow-[0_12px_40px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden ${
+          className={`bg-[#181828]/95 backdrop-blur-2xl border border-white/20 text-white transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] shadow-[0_12px_40px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden ${
             isExpanded 
-              ? 'w-full rounded-3xl p-4' 
-              : 'h-11 px-3 rounded-full flex-row items-center justify-between active:scale-95'
+              ? 'w-[90vw] max-w-sm rounded-3xl p-4' 
+              : 'h-11 px-3 rounded-full flex-row items-center justify-between'
           }`}
         >
           {!isExpanded ? (
             /* COLLAPSED STATE */
             <div className="w-full flex items-center justify-between space-x-2">
+              {/* Drag Handle Indicator */}
+              <div 
+                className="text-white/30 hover:text-white/60 p-0.5 shrink-0 flex items-center" 
+                title="Tahan & geser untuk memindahkan posisi"
+              >
+                <GripHorizontal size={14} />
+              </div>
+
+              {/* Prev Button */}
               <button 
                 onClick={handlePrevApp} 
-                className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-90 transition-all"
+                className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-90 transition-all shrink-0"
                 title="Layanan Sebelumnya"
               >
                 <ChevronLeft size={16} />
               </button>
 
-              <div className="flex items-center space-x-2.5 min-w-0 flex-1 justify-center">
+              {/* Active Service Badge & Name */}
+              <div className="flex items-center space-x-2 min-w-0 flex-1 justify-center px-1">
                 <div 
                   className="w-6 h-6 rounded-lg flex items-center justify-center p-0.5 shrink-0 shadow-sm"
                   style={{ backgroundColor: activeApp?.color ? `${activeApp.color}25` : 'rgba(255,255,255,0.15)' }}
@@ -58,15 +202,20 @@ export default function DynamicIsland({
                     onError={(e) => { e.target.style.display = 'none'; }}
                   />
                 </div>
-                <span className="text-xs font-bold text-white tracking-wide truncate max-w-[130px]">
-                  {activeApp?.name}
-                </span>
+
+                {!hideLabels && (
+                  <span className="text-xs font-bold text-white tracking-wide truncate max-w-[120px]">
+                    {activeApp?.name}
+                  </span>
+                )}
+
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50 shrink-0" />
               </div>
 
+              {/* Next Button */}
               <button 
                 onClick={handleNextApp} 
-                className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-90 transition-all"
+                className="p-1 rounded-full text-white/80 hover:text-white hover:bg-white/10 active:scale-90 transition-all shrink-0"
                 title="Layanan Berikutnya"
               >
                 <ChevronRight size={16} />
@@ -78,6 +227,9 @@ export default function DynamicIsland({
               {/* Header */}
               <div className="flex items-center justify-between pb-2 border-b border-white/15">
                 <div className="flex items-center space-x-2">
+                  <div className="text-white/40 p-0.5" title="Bisa digeser ke mana saja">
+                    <Move size={14} />
+                  </div>
                   <span className="text-xs font-extrabold text-white tracking-wider uppercase">
                     Rambox Workspace
                   </span>
@@ -85,12 +237,45 @@ export default function DynamicIsland({
                     {apps.length} Layanan
                   </span>
                 </div>
-                <button 
-                  onClick={() => setIsExpanded(false)} 
-                  className="p-1 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <X size={16} />
-                </button>
+
+                <div className="flex items-center space-x-1">
+                  {/* Reset Position (if dragged) */}
+                  {position && (
+                    <button
+                      onClick={resetPosition}
+                      className="px-2 py-1 rounded-lg text-[10px] text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                      title="Kembalikan posisi ke atas tengah"
+                    >
+                      Reset Posisi
+                    </button>
+                  )}
+
+                  {/* Settings Button in Header */}
+                  {onOpenSettingsModal && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenSettingsModal();
+                        setIsExpanded(false);
+                      }}
+                      className="p-1.5 rounded-full text-indigo-300 hover:text-white hover:bg-white/10 transition-colors"
+                      title="Pengaturan"
+                    >
+                      <Settings size={16} />
+                    </button>
+                  )}
+
+                  {/* Close Button */}
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsExpanded(false);
+                    }} 
+                    className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
 
               {/* Installed Apps Grid */}
@@ -100,7 +285,8 @@ export default function DynamicIsland({
                   return (
                     <div
                       key={app.id}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setActiveAppId(app.id);
                         setIsExpanded(false);
                       }}
@@ -147,7 +333,8 @@ export default function DynamicIsland({
               {/* Action Buttons */}
               <div className="flex items-center space-x-2 pt-2 border-t border-white/15">
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onOpenServicesModal();
                     setIsExpanded(false);
                   }}
@@ -157,9 +344,24 @@ export default function DynamicIsland({
                   <span>Tambah Layanan</span>
                 </button>
 
+                {onOpenSettingsModal && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenSettingsModal();
+                      setIsExpanded(false);
+                    }}
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+                    title="Pengaturan Lengkap"
+                  >
+                    <Settings size={15} />
+                  </button>
+                )}
+
                 {onReloadActive && (
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onReloadActive();
                       setIsExpanded(false);
                     }}
@@ -172,7 +374,8 @@ export default function DynamicIsland({
 
                 {onCheckUpdates && (
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onCheckUpdates();
                       setIsExpanded(false);
                     }}
@@ -199,21 +402,19 @@ export default function DynamicIsland({
             <p className="text-xs text-white/70 mb-5">
               Apakah Anda yakin ingin menghapus <strong className="text-white">{appToDelete.name}</strong> dari daftar?
             </p>
-            <div className="flex items-center space-x-2.5 w-full">
+            <div className="flex space-x-2 w-full">
               <button
                 onClick={() => setAppToDelete(null)}
-                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors"
+                className="flex-1 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition-colors"
               >
                 Batal
               </button>
               <button
                 onClick={() => {
-                  if (onRemoveApp) {
-                    onRemoveApp(appToDelete.id);
-                  }
+                  onRemoveApp(appToDelete.id);
                   setAppToDelete(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 active:scale-95 transition-transform"
+                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white transition-colors shadow-lg shadow-red-600/30"
               >
                 Hapus
               </button>

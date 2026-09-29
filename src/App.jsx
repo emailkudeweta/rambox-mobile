@@ -1,12 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { DEFAULT_SERVICES } from './config/constants';
 import MobileWebview from './components/MobileWebview';
 import ServicesModal from './components/ServicesModal';
+import SettingsModal, { DEFAULT_PREFERENCES } from './components/SettingsModal';
 import AutoUpdaterModal from './components/AutoUpdaterModal';
 import DynamicIsland from './ui/DynamicIsland';
 
 export default function App() {
+  const [preferences, setPreferences] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rambox_preferences');
+      if (saved) return { ...DEFAULT_PREFERENCES, ...JSON.parse(saved) };
+    } catch (e) {}
+    return DEFAULT_PREFERENCES;
+  });
+
   const [apps, setApps] = useState(() => {
     try {
       const saved = localStorage.getItem('rambox_mobile_apps');
@@ -16,13 +25,24 @@ export default function App() {
   });
 
   const [activeAppId, setActiveAppId] = useState(() => {
-    return localStorage.getItem('rambox_mobile_active_app') || DEFAULT_SERVICES[0].id;
+    try {
+      const savedPrefs = localStorage.getItem('rambox_preferences');
+      const prefs = savedPrefs ? JSON.parse(savedPrefs) : DEFAULT_PREFERENCES;
+      if (prefs.defaultView === 'last-active') {
+        const lastActive = localStorage.getItem('rambox_mobile_active_app');
+        if (lastActive) return lastActive;
+      }
+    } catch (e) {}
+    return DEFAULT_SERVICES[0].id;
   });
 
   const [isServicesModalOpen, setIsServicesModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isManualUpdateOpen, setIsManualUpdateOpen] = useState(false);
 
-  // Persistence
+  const wakeLockRef = useRef(null);
+
+  // Persistence of apps & active app
   useEffect(() => {
     localStorage.setItem('rambox_mobile_apps', JSON.stringify(apps));
   }, [apps]);
@@ -30,6 +50,38 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('rambox_mobile_active_app', activeAppId);
   }, [activeAppId]);
+
+  // Persistence of preferences
+  const handleSavePreferences = (newPrefs) => {
+    setPreferences(newPrefs);
+    localStorage.setItem('rambox_preferences', JSON.stringify(newPrefs));
+  };
+
+  // Screen Wake Lock (Keep Screen On preference)
+  useEffect(() => {
+    const manageWakeLock = async () => {
+      try {
+        if (preferences.keepScreenOn && 'wakeLock' in navigator) {
+          if (!wakeLockRef.current) {
+            wakeLockRef.current = await navigator.wakeLock.request('screen');
+          }
+        } else if (wakeLockRef.current) {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
+        }
+      } catch (err) {
+        console.warn('WakeLock not supported or denied', err);
+      }
+    };
+    manageWakeLock();
+
+    return () => {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [preferences.keepScreenOn]);
 
   // Handle Android Native Hardware Back Button & Gestures
   useEffect(() => {
@@ -39,6 +91,10 @@ export default function App() {
         // 1. Close open modals first
         if (isManualUpdateOpen) {
           setIsManualUpdateOpen(false);
+          return;
+        }
+        if (isSettingsOpen) {
+          setIsSettingsOpen(false);
           return;
         }
         if (isServicesModalOpen) {
@@ -57,7 +113,7 @@ export default function App() {
     return () => {
       if (handler && handler.remove) handler.remove();
     };
-  }, [isManualUpdateOpen, isServicesModalOpen, activeAppId]);
+  }, [isManualUpdateOpen, isSettingsOpen, isServicesModalOpen, activeAppId]);
 
   const handleAddApp = (newApp) => {
     setApps(prev => [...prev, newApp]);
@@ -79,13 +135,18 @@ export default function App() {
     }));
   };
 
-  const activeApp = apps.find(a => a.id === activeAppId) || apps[0];
+  const handleResetIslandPosition = () => {
+    localStorage.removeItem('rambox_dynamic_island_pos');
+    window.location.reload();
+  };
+
+  const isAmoled = preferences.theme === 'amoled';
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#0c0c14] text-white relative overflow-hidden select-none">
+    <div className={`w-full h-full flex flex-col ${isAmoled ? 'bg-black' : 'bg-[#0c0c14]'} text-white relative overflow-hidden select-none`}>
       
       {/* ============================================================== */}
-      {/* 1. DYNAMIC ISLAND (Satu-satunya Navigasi Modern & Jelas)       */}
+      {/* 1. DYNAMIC ISLAND (Draggable Anywhere + Settings Button)        */}
       {/* ============================================================== */}
       <DynamicIsland 
         apps={apps}
@@ -93,13 +154,15 @@ export default function App() {
         setActiveAppId={setActiveAppId}
         onRemoveApp={handleRemoveApp}
         onOpenServicesModal={() => setIsServicesModalOpen(true)}
+        onOpenSettingsModal={() => setIsSettingsOpen(true)}
         onCheckUpdates={() => setIsManualUpdateOpen(true)}
         onReloadActive={handleReloadActive}
+        hideLabels={preferences.hideLabels}
       />
 
       {/* ============================================================== */}
       {/* 2. PERSISTENT WEBVIEW STACK                                    */}
-      {/* pt-14 memastikan konten tidak tertutup oleh Dynamic Island     */}
+      {/* pt-14 memastikan konten tidak tertutup saat island di atas     */}
       {/* ============================================================== */}
       <div className="flex-1 w-full h-full relative overflow-hidden pt-14">
         {apps.map((app) => {
@@ -122,6 +185,7 @@ export default function App() {
                 isActive={isActive} 
                 isDarkMode={true} 
                 onRemoveApp={handleRemoveApp}
+                isMuted={preferences.muteAll}
               />
             </div>
           );
@@ -129,7 +193,7 @@ export default function App() {
       </div>
 
       {/* ============================================================== */}
-      {/* 3. MODALS (Kelola Layanan & Pembaruan OTA)                      */}
+      {/* 3. MODALS (Kelola Layanan, Pengaturan Lengkap, & Pembaruan OTA) */}
       {/* ============================================================== */}
       <ServicesModal 
         isOpen={isServicesModalOpen}
@@ -137,6 +201,18 @@ export default function App() {
         apps={apps}
         onAddApp={handleAddApp}
         onRemoveApp={handleRemoveApp}
+      />
+
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        preferences={preferences}
+        onSavePreferences={handleSavePreferences}
+        onResetIslandPosition={handleResetIslandPosition}
+        onCheckUpdates={() => {
+          setIsSettingsOpen(false);
+          setIsManualUpdateOpen(true);
+        }}
       />
 
       <AutoUpdaterModal 
