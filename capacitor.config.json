@@ -1,0 +1,23 @@
+{
+  "appId": "com.rambox.mobile",
+  "appName": "Rambox Mobile",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0c0c14"
+    },
+    "Keyboard": {
+      "resize": "body"
+    }
+  }
+}
