@@ -37,22 +37,25 @@ if (-not $Tag) {
 
         Write-Host "Tag $candidateTag sudah ada. Otomatis menaikkan versi rilis ke $Tag..." -ForegroundColor Yellow
 
-        # Update package.json
-        $pkg.version = $newVer
-        $pkg | ConvertTo-Json -Depth 4 | Set-Content $pkgJsonPath -Encoding UTF8
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+        # Update package.json cleanly with regex
+        $pkgRaw = [System.IO.File]::ReadAllText($pkgJsonPath)
+        $pkgRaw = $pkgRaw -replace '"version":\s*"[^"]+"', "`"version`": `"$newVer`""
+        [System.IO.File]::WriteAllText($pkgJsonPath, $pkgRaw, $utf8NoBom)
 
         # Update AutoUpdaterModal.jsx
         $updaterPath = Join-Path $repoPath "src\components\AutoUpdaterModal.jsx"
-        $content = Get-Content $updaterPath -Raw
+        $content = [System.IO.File]::ReadAllText($updaterPath)
         $content = $content -replace "CURRENT_APP_VERSION = '[^']+'", "CURRENT_APP_VERSION = '$newVer'"
-        Set-Content -Path $updaterPath -Value $content -Encoding UTF8
+        [System.IO.File]::WriteAllText($updaterPath, $content, $utf8NoBom)
 
-        # Update build.gradle
+        # Update build.gradle (NEVER WITH BOM - Gradle on Linux fails if BOM is present)
         $gradlePath = Join-Path $repoPath "android\app\build.gradle"
-        $gradleContent = Get-Content $gradlePath -Raw
+        $gradleContent = [System.IO.File]::ReadAllText($gradlePath)
         $gradleContent = $gradleContent -replace 'versionCode \d+', "versionCode $(100 + $patch)"
         $gradleContent = $gradleContent -replace 'versionName "[^"]+"', "versionName `"$newVer`""
-        Set-Content -Path $gradlePath -Value $gradleContent -Encoding UTF8
+        [System.IO.File]::WriteAllText($gradlePath, $gradleContent, $utf8NoBom)
 
         Write-Host "Mengompilasi web assets dan sinkronisasi Capacitor..." -ForegroundColor Cyan
         & npm run build
