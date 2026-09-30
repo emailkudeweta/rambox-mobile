@@ -1,7 +1,7 @@
 {
   "name": "rambox-mobile",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -19,6 +19,7 @@
     "@capacitor/haptics": "^7.0.0",
     "@capacitor/keyboard": "^7.0.0",
     "@capacitor/status-bar": "^7.0.0",
+    "@wppconnect/wa-js": "^4.6.0",
     "lucide-react": "^1.8.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

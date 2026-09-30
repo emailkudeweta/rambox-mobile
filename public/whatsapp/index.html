@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>WhatsApp</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+  <link rel="stylesheet" href="/whatsapp/whatsapp-clone.css">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="/whatsapp/tailwindcss.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Roboto', 'sans-serif'] },
+          colors: {
+            wa: {
+              green: '#25D366',
+              dark: '#128C7E',
+              darker: '#075E54',
+              text: '#111B21',
+              subtext: '#667781',
+              divider: '#F2F2F2',
+              bubble: '#D9FDD3'
+            }
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="h-screen w-screen overflow-hidden font-sans text-wa-text">
+  <div id="rb-wa-root">
+    <div id="app-clone" class="h-full w-full bg-white flex flex-col relative overflow-hidden"></div>
+    <div id="pages"></div>
+    <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-[#323232] text-white text-[14px] px-4 py-2 rounded-lg opacity-0 transition-opacity pointer-events-none" style="z-index:9999999"></div>
+  </div>
+
+  <script src="/whatsapp/wppconnect-wa.js"></script>
+  <script src="/whatsapp/whatsapp-clone.js"></script>
+</body>
+</html>

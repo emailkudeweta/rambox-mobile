@@ -23,10 +23,10 @@ export default function App() {
         const parsed = JSON.parse(saved);
         return parsed.map(app => {
           const defaultMatch = DEFAULT_SERVICES.find(d => d.id === app.id);
-          if (defaultMatch && defaultMatch.isNativeLauncher) {
+          if (defaultMatch) {
             return {
               ...app,
-              isNativeLauncher: defaultMatch.isNativeLauncher,
+              isNativeLauncher: !!defaultMatch.isNativeLauncher,
               packageName: defaultMatch.packageName,
               fallbackPackageNames: defaultMatch.fallbackPackageNames
             };

@@ -6,7 +6,7 @@ export const DEFAULT_SERVICES = [
     category: 'Messaging',
     iconPath: './Icon/whatsapp.ico',
     color: '#22c55e',
-    isNativeLauncher: true,
+    isNativeLauncher: false,
     packageName: 'com.whatsapp',
     fallbackPackageNames: ['com.whatsapp.w4b']
   },

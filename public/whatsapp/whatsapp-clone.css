@@ -1,0 +1,127 @@
+/* WhatsApp Mobile Clone Styles */
+::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+body {
+  -webkit-tap-highlight-color: transparent !important;
+  user-select: none !important;
+  background: #ffffff !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+/* Hide desktop WhatsApp Web container when clone UI is mounted */
+body.wa-clone-active #app,
+body.wa-clone-qr #app {
+  position: fixed !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Main Mobile App Container */
+#rb-wa-root {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 999999 !important;
+  background: #ffffff !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#app-clone {
+  width: 100% !important;
+  height: 100% !important;
+  background: #ffffff !important;
+  display: flex !important;
+  flex-direction: column !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.tg {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #c5cbd0;
+  position: relative;
+  flex-shrink: 0;
+  transition: 0.2s;
+}
+.tg:after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: 0.2s;
+}
+.tg.on {
+  background: #25D366;
+}
+.tg.on:after {
+  left: 21px;
+}
+
+.anim {
+  animation: sl 0.2s ease-out;
+}
+@keyframes sl {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.pb {
+  animation: pb 5s linear forwards;
+}
+@keyframes pb {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.cbg {
+  background: #EFEAE2 radial-gradient(#0000000d 1.5px, transparent 1.5px) 0 0/18px 18px;
+}
+
+.material-symbols-rounded {
+  font-variation-settings: 'wght' 300;
+  font-family: 'Material Symbols Rounded', sans-serif;
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ab:active {
+  background: #F5F6F6 !important;
+}

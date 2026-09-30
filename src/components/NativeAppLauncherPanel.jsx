@@ -35,16 +35,7 @@ export default function NativeAppLauncherPanel({ app, isActive, onFallbackToWeb 
     }
   };
 
-  // Auto-launch once when active tab is opened
-  useEffect(() => {
-    if (isActive && !hasAutoLaunched) {
-      setHasAutoLaunched(true);
-      const timer = setTimeout(() => {
-        handleLaunch();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isActive, hasAutoLaunched]);
+  // Native app is launched only when user clicks the launch button
 
   // Request overlay permission or toggle floating island
   const handleToggleOverlay = () => {

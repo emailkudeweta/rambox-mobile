@@ -713,6 +713,27 @@ public class MainActivity extends BridgeActivity {
                 }
             }
 
+            // Local asset bridge for WhatsApp Mobile Clone engine
+            String reqPath = uri != null ? uri.getPath() : "";
+            if (reqPath != null && reqPath.contains("/wa-clone/")) {
+                try {
+                    String subPath = reqPath.substring(reqPath.indexOf("/wa-clone/") + "/wa-clone/".length());
+                    String assetPath = "public/whatsapp/" + subPath;
+                    InputStream is = getAssets().open(assetPath);
+                    String mime = "application/javascript";
+                    if (subPath.endsWith(".css")) mime = "text/css";
+                    else if (subPath.endsWith(".html")) mime = "text/html";
+                    else if (subPath.endsWith(".png")) mime = "image/png";
+                    else if (subPath.endsWith(".svg")) mime = "image/svg+xml";
+                    Map<String, String> headers = new HashMap<>();
+                    headers.put("Access-Control-Allow-Origin", "*");
+                    headers.put("Cache-Control", "no-cache");
+                    return new WebResourceResponse(mime, "UTF-8", 200, "OK", headers, is);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error intercepting wa-clone asset: " + reqPath, e);
+                }
+            }
+
             // ONLY intercept HTML document navigations!
             // Subresources (JS, CSS, WASM, WebWorkers, WebSockets, Images) MUST be handled natively
             // by Chromium to ensure full performance, proper caching, and persistent WebSocket streams.
@@ -878,160 +899,16 @@ public class MainActivity extends BridgeActivity {
                             .append("} catch(e) {}\n")
                             .append("</script>\n");
 
-                        // WhatsApp Ultimate Android Native Re-Skinning (Solusi 1)
+                        // Viewport & Assets for Custom WhatsApp Mobile Client
                         injection.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover\">\n");
-                        injection.append("<style id=\"rb-wa-android-reskin\">\n")
-                            .append("html, body { width: 100vw !important; height: 100vh !important; min-width: 100vw !important; max-width: 100vw !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; touch-action: manipulation !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; -webkit-font-smoothing: antialiased !important; user-select: none !important; }\n")
-                            .append("#app, #app > div, #app > div > div { width: 100vw !important; height: 100vh !important; min-width: 100vw !important; max-width: 100vw !important; margin: 0 !important; padding: 0 !important; border: none !important; border-radius: 0 !important; overflow: hidden !important; }\n")
-                            .append("#app > div > div { display: flex !important; flex-direction: row !important; width: 100vw !important; position: relative !important; }\n")
-                            // Sidebar pane (tagged or fallback)
-                            .append("[data-rb-pane='sidebar'], div:has(> #side), div:has(> div > #side), #side { width: 100vw !important; min-width: 100vw !important; max-width: 100vw !important; flex: 0 0 100vw !important; height: 100vh !important; display: flex !important; flex-direction: column !important; border: none !important; }\n")
-                            // Main / Intro pane (tagged or fallback)
-                            .append("[data-rb-pane='main'], div:has(> #main) { width: 100vw !important; min-width: 100vw !important; max-width: 100vw !important; flex: 0 0 100vw !important; height: 100vh !important; display: flex !important; flex-direction: column !important; border: none !important; }\n")
-                            // State A: List mode (Chat closed)
-                            .append("body:not(.wa-chat-open) [data-rb-pane='sidebar'], body:not(.wa-chat-open) div:has(> #side), body:not(.wa-chat-open) #side { display: flex !important; width: 100vw !important; min-width: 100vw !important; max-width: 100vw !important; flex: 0 0 100vw !important; visibility: visible !important; }\n")
-                            .append("body:not(.wa-chat-open) [data-rb-pane='main'], body:not(.wa-chat-open) div:has(> #main), body:not(.wa-chat-open) #main, body:not(.wa-chat-open) div[data-asset-intro-image], body:not(.wa-chat-open) div[data-testid='intro-screen'] { display: none !important; width: 0 !important; max-width: 0 !important; flex: 0 0 0 !important; visibility: hidden !important; }\n")
-                            // State B: Chat mode (Chat open)
-                            .append("body.wa-chat-open [data-rb-pane='sidebar'], body.wa-chat-open div:has(> #side), body.wa-chat-open #side { display: none !important; width: 0 !important; max-width: 0 !important; flex: 0 0 0 !important; visibility: hidden !important; }\n")
-                            .append("body.wa-chat-open [data-rb-pane='main'], body.wa-chat-open div:has(> #main) { display: flex !important; flex-direction: column !important; width: 100vw !important; min-width: 100vw !important; max-width: 100vw !important; flex: 0 0 100vw !important; height: 100vh !important; max-height: 100vh !important; overflow: hidden !important; visibility: visible !important; }\n")
-                            .append("body.wa-chat-open #main { display: flex !important; flex-direction: column !important; width: 100vw !important; min-width: 100vw !important; max-width: 100vw !important; height: 100% !important; max-height: 100vh !important; flex: 1 1 100% !important; overflow: hidden !important; position: relative !important; }\n")
-                            // Sidebar Header
-                            .append("#side > header { background-color: #008069 !important; color: #ffffff !important; height: 56px !important; min-height: 56px !important; max-height: 56px !important; padding: 0 16px !important; display: flex !important; align-items: center !important; justify-content: space-between !important; box-shadow: 0 2px 4px rgba(0,0,0,0.18) !important; z-index: 100 !important; flex-shrink: 0 !important; }\n")
-                            .append("#rb-wa-brand { font-size: 20px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.2px !important; display: flex !important; align-items: center !important; }\n")
-                            .append("#side > header [role='button'], #side > header [role='button'] svg { color: #ffffff !important; fill: #ffffff !important; }\n")
-                            // Chat list
-                            .append("#pane-side { -webkit-overflow-scrolling: touch !important; overflow-y: auto !important; height: calc(100vh - 56px) !important; width: 100vw !important; }\n")
-                            .append("div[data-testid='cell-frame-container'] { min-height: 72px !important; padding: 8px 16px !important; border-bottom: 1px solid rgba(0,0,0,0.06) !important; }\n")
-                            .append("div[data-testid='cell-frame-container'] img { border-radius: 50% !important; }\n")
-                            // Floating Action Button (FAB - New Chat)
-                            .append("#rb-wa-fab { position: fixed !important; bottom: 84px !important; right: 20px !important; width: 56px !important; height: 56px !important; border-radius: 28px !important; background-color: #00a884 !important; color: #ffffff !important; display: flex !important; align-items: center !important; justify-content: center !important; box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important; z-index: 999 !important; cursor: pointer !important; border: none !important; transition: transform 0.15s ease !important; }\n")
-                            .append("#rb-wa-fab:active { transform: scale(0.92) !important; background-color: #008f6f !important; }\n")
-                            .append("body.wa-chat-open #rb-wa-fab { display: none !important; }\n")
-                            // Conversation Header
-                            .append("#main > header { background-color: #008069 !important; color: #ffffff !important; height: 56px !important; min-height: 56px !important; max-height: 56px !important; padding: 0 8px !important; display: flex !important; align-items: center !important; box-shadow: 0 2px 4px rgba(0,0,0,0.18) !important; z-index: 100 !important; flex-shrink: 0 !important; }\n")
-                            .append("#main > header span, #main > header div[role='button'] { color: #ffffff !important; }\n")
-                            .append("#main > header div[role='button'] svg { fill: #ffffff !important; color: #ffffff !important; }\n")
-                            .append("#rb-wa-back { display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 38px !important; height: 38px !important; border-radius: 50% !important; background: transparent !important; color: #ffffff !important; border: none !important; cursor: pointer !important; margin-right: 4px !important; padding: 0 !important; }\n")
-                            .append("#rb-wa-back:active { background: rgba(255,255,255,0.2) !important; }\n")
-                            // Conversation Messages Area
-                            .append("#main > div[tabindex='-1'], #main > div[role='region'], #main > div[class*='copyable-area'] { flex: 1 1 auto !important; height: auto !important; min-height: 0 !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; }\n")
-                            .append("div[data-testid='msg-container'] { user-select: text !important; -webkit-user-select: text !important; }\n")
-                            // Conversation Footer / Message Input Box
-                            .append("#main > footer { display: flex !important; flex-direction: row !important; align-items: center !important; min-height: 58px !important; width: 100vw !important; max-width: 100vw !important; background: #f0f2f5 !important; padding: 6px 8px 12px 8px !important; box-sizing: border-box !important; z-index: 50 !important; position: relative !important; flex-shrink: 0 !important; }\n")
-                            .append("#main > footer [contenteditable='true'] { user-select: text !important; -webkit-user-select: text !important; min-height: 24px !important; max-height: 120px !important; }\n")
-                            // Dark mode
-                            .append("body.dark #side > header, body.dark #main > header { background-color: #1f2c34 !important; }\n")
-                            .append("body.dark #main > footer { background-color: #202c33 !important; }\n")
-                            .append("</style>\n");
-
-                        // Injected script to drive Android Native UX (Header, FAB, Back Button, Single-pane)
-                        injection.append("<script id=\"rb-wa-android-controller\">\n")
-                            .append("(function() {\n")
-                            .append("  var isClosingChat = false;\n")
-                            .append("  function tagPanes() {\n")
-                            .append("    var side = document.getElementById('side');\n")
-                            .append("    if (side) {\n")
-                            .append("      var sidePane = side;\n")
-                            .append("      while (sidePane.parentElement && sidePane.parentElement.id !== 'app' && sidePane.parentElement !== document.body) {\n")
-                            .append("        if (sidePane.parentElement.children.length > 1) { break; }\n")
-                            .append("        sidePane = sidePane.parentElement;\n")
-                            .append("      }\n")
-                            .append("      if (sidePane && sidePane.parentElement) {\n")
-                            .append("        sidePane.setAttribute('data-rb-pane', 'sidebar');\n")
-                            .append("        for (var i = 0; i < sidePane.parentElement.children.length; i++) {\n")
-                            .append("          var child = sidePane.parentElement.children[i];\n")
-                            .append("          if (child !== sidePane) {\n")
-                            .append("            child.setAttribute('data-rb-pane', 'main');\n")
-                            .append("          }\n")
-                            .append("        }\n")
-                            .append("      }\n")
-                            .append("    }\n")
-                            .append("  }\n")
-                            .append("  function applyWaAndroidMods() {\n")
-                            .append("    tagPanes();\n")
-                            .append("    var sideHeader = document.querySelector('#side header');\n")
-                            .append("    if (sideHeader && !document.getElementById('rb-wa-brand')) {\n")
-                            .append("      var brand = document.createElement('div');\n")
-                            .append("      brand.id = 'rb-wa-brand';\n")
-                            .append("      brand.innerText = 'WhatsApp';\n")
-                            .append("      sideHeader.insertBefore(brand, sideHeader.firstChild);\n")
-                            .append("    }\n")
-                            .append("    if (!document.getElementById('rb-wa-fab')) {\n")
-                            .append("      var fab = document.createElement('button');\n")
-                            .append("      fab.id = 'rb-wa-fab';\n")
-                            .append("      fab.title = 'Mulai Obrolan Baru';\n")
-                            .append("      fab.innerHTML = '<svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.2L4 17.2V4h16v12z\"/></svg>';\n")
-                            .append("      fab.onclick = function(e) {\n")
-                            .append("        e.stopPropagation();\n")
-                            .append("        var newChatBtn = document.querySelector('#side span[data-icon=\"chat\"], #side span[data-icon=\"new-chat-outline\"], #side [data-testid=\"chat\"], #side [data-icon=\"plus\"]');\n")
-                            .append("        if (newChatBtn) {\n")
-                            .append("          (newChatBtn.closest('[role=\"button\"]') || newChatBtn).click();\n")
-                            .append("        } else {\n")
-                            .append("          var searchBtn = document.querySelector('#side [data-icon=\"search\"], #side [data-testid=\"search\"]');\n")
-                            .append("          if (searchBtn) (searchBtn.closest('[role=\"button\"]') || searchBtn).click();\n")
-                            .append("        }\n")
-                            .append("      };\n")
-                            .append("      document.body.appendChild(fab);\n")
-                            .append("    }\n")
-                            .append("    var paneSide = document.getElementById('pane-side');\n")
-                            .append("    if (paneSide && !paneSide.__rb_bound) {\n")
-                            .append("      paneSide.__rb_bound = true;\n")
-                            .append("      paneSide.addEventListener('click', function() {\n")
-                            .append("        isClosingChat = false;\n")
-                            .append("        setTimeout(applyWaAndroidMods, 50);\n")
-                            .append("        setTimeout(applyWaAndroidMods, 150);\n")
-                            .append("        setTimeout(applyWaAndroidMods, 300);\n")
-                            .append("        setTimeout(applyWaAndroidMods, 600);\n")
-                            .append("      }, true);\n")
-                            .append("    }\n")
-                            .append("    var main = document.getElementById('main');\n")
-                            .append("    var isChatActive = !isClosingChat && !!main && !!main.querySelector('header');\n")
-                            .append("    if (isChatActive) {\n")
-                            .append("      if (!document.body.classList.contains('wa-chat-open')) {\n")
-                            .append("        document.body.classList.add('wa-chat-open');\n")
-                            .append("      }\n")
-                            .append("      var mainHeader = main.querySelector('header');\n")
-                            .append("      if (mainHeader && !document.getElementById('rb-wa-back')) {\n")
-                            .append("        var backBtn = document.createElement('button');\n")
-                            .append("        backBtn.id = 'rb-wa-back';\n")
-                            .append("        backBtn.title = 'Kembali';\n")
-                            .append("        backBtn.innerHTML = '<svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"19\" y1=\"12\" x2=\"5\" y2=\"12\"></line><polyline points=\"12 19 5 12 12 5\"></polyline></svg>';\n")
-                            .append("        backBtn.onclick = function(e) {\n")
-                            .append("          e.stopPropagation();\n")
-                            .append("          e.preventDefault();\n")
-                            .append("          closeActiveChat();\n")
-                            .append("        };\n")
-                            .append("        mainHeader.insertBefore(backBtn, mainHeader.firstChild);\n")
-                            .append("      }\n")
-                            .append("    } else {\n")
-                            .append("      if (document.body.classList.contains('wa-chat-open')) {\n")
-                            .append("        document.body.classList.remove('wa-chat-open');\n")
-                            .append("      }\n")
-                            .append("    }\n")
-                            .append("  }\n")
-                            .append("  function closeActiveChat() {\n")
-                            .append("    isClosingChat = true;\n")
-                            .append("    document.body.classList.remove('wa-chat-open');\n")
-                            .append("    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }));\n")
-                            .append("    setTimeout(function() {\n")
-                            .append("      if (document.getElementById('main')) {\n")
-                            .append("        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }));\n")
-                            .append("      }\n")
-                            .append("      isClosingChat = false;\n")
-                            .append("      applyWaAndroidMods();\n")
-                            .append("    }, 350);\n")
-                            .append("  }\n")
-                            .append("  window.addEventListener('message', function(e) {\n")
-                            .append("    if (e.data && e.data.action === 'goBack' && document.body.classList.contains('wa-chat-open')) {\n")
-                            .append("      closeActiveChat();\n")
-                            .append("    }\n")
-                            .append("  });\n")
-                            .append("  var obs = new MutationObserver(applyWaAndroidMods);\n")
-                            .append("  obs.observe(document.documentElement, { childList: true, subtree: true });\n")
-                            .append("  window.addEventListener('load', applyWaAndroidMods);\n")
-                            .append("  setInterval(applyWaAndroidMods, 350);\n")
-                            .append("})();\n")
+                        injection.append("<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Roboto:wght@400;500;700&display=swap\">\n");
+                        injection.append("<link rel=\"stylesheet\" href=\"/wa-clone/whatsapp-clone.css\">\n");
+                        injection.append("<script src=\"/wa-clone/tailwindcss.js\"></script>\n");
+                        injection.append("<script id=\"rb-wa-tailwind-cfg\">\n")
+                            .append("tailwind.config = { theme: { extend: { fontFamily: { sans: ['Roboto', 'sans-serif'] }, colors: { wa: { green: '#25D366', dark: '#128C7E', darker: '#075E54', text: '#111B21', subtext: '#667781', divider: '#F2F2F2', bubble: '#D9FDD3' } } } } };\n")
                             .append("</script>\n");
+                        injection.append("<script src=\"/wa-clone/wppconnect-wa.js\"></script>\n");
+                        injection.append("<script src=\"/wa-clone/whatsapp-clone.js\"></script>\n");
                     } else {
                         // General mobile services styling: enforce touch scrolling and prevent horizontal overflow
                         if (!html.toLowerCase(Locale.ROOT).contains("name=\"viewport\"")) {
