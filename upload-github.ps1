@@ -15,42 +15,76 @@ Write-Host "==========================================================" -Foregro
 Write-Host "   🚀 Rambox Mobile - Auto Sync & OTA Deployment" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-# 1. Pastikan semua file lokal sudah ter-commit
+# 1. Baca versi saat ini dari package.json
+$pkgJsonPath = Join-Path $repoPath "package.json"
+$pkg = Get-Content $pkgJsonPath -Raw | ConvertFrom-Json
+$currentVer = $pkg.version
+
+# Tentukan Tag rilis
+if (-not $Tag) {
+    # Cek apakah tag sudah ada di Git lokal atau remote
+    $existingTags = (& git tag)
+    $candidateTag = "v$currentVer"
+
+    if ($existingTags -contains $candidateTag) {
+        # Tag sudah pernah dibuat, otomatis naikkan patch version (misal 1.0.2 -> 1.0.3)
+        $parts = $currentVer.Split('.')
+        $major = [int]$parts[0]
+        $minor = [int]$parts[1]
+        $patch = [int]$parts[2] + 1
+        $newVer = "$major.$minor.$patch"
+        $Tag = "v$newVer"
+
+        Write-Host "Tag $candidateTag sudah ada. Otomatis menaikkan versi rilis ke $Tag..." -ForegroundColor Yellow
+
+        # Update package.json
+        $pkg.version = $newVer
+        $pkg | ConvertTo-Json -Depth 4 | Set-Content $pkgJsonPath -Encoding UTF8
+
+        # Update AutoUpdaterModal.jsx
+        $updaterPath = Join-Path $repoPath "src\components\AutoUpdaterModal.jsx"
+        $content = Get-Content $updaterPath -Raw
+        $content = $content -replace "CURRENT_APP_VERSION = '[^']+'", "CURRENT_APP_VERSION = '$newVer'"
+        Set-Content -Path $updaterPath -Value $content -Encoding UTF8
+
+        # Update build.gradle
+        $gradlePath = Join-Path $repoPath "android\app\build.gradle"
+        $gradleContent = Get-Content $gradlePath -Raw
+        $gradleContent = $gradleContent -replace 'versionCode \d+', "versionCode $(100 + $patch)"
+        $gradleContent = $gradleContent -replace 'versionName "[^"]+"', "versionName `"$newVer`""
+        Set-Content -Path $gradlePath -Value $gradleContent -Encoding UTF8
+    } else {
+        $Tag = $candidateTag
+    }
+}
+
+Write-Host "[1/4] Versi rilis OTA yang akan dipublikasikan: $Tag" -ForegroundColor Cyan
+
+# 2. Pastikan semua file lokal ter-commit
 $status = & git status --porcelain
 if ($status) {
-    Write-Host "[1/4] Menemukan perubahan kode lokal, membuat commit otomatis..." -ForegroundColor Yellow
+    Write-Host "[2/4] Menyimpan perubahan kode lokal ke git..." -ForegroundColor Yellow
     & git add .
-    & git commit -m "update: automated sync $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    & git commit -m "release: $Tag - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
 } else {
-    Write-Host "[1/4] Seluruh perubahan kode lokal sudah ter-commit rapi." -ForegroundColor Green
+    Write-Host "[2/4] Seluruh perubahan kode lokal sudah tersimpan rapi." -ForegroundColor Green
 }
 
-# 2. Tag versi rilis jika diminta
-if ($Tag) {
-    Write-Host "[2/4] Menambahkan release tag: $Tag..." -ForegroundColor Yellow
-    & git tag -f $Tag -m "Release $Tag"
-} else {
-    Write-Host "[2/4] Melewati pembuatan tag baru (menggunakan commit branch main)." -ForegroundColor Gray
-}
+# 3. Buat Git Tag
+Write-Host "[3/4] Menetapkan release tag $Tag..." -ForegroundColor Yellow
+& git tag -f $Tag -m "Release $Tag"
 
-# 3. Push ke GitHub
-Write-Host "[3/4] Mengunggah (push) ke GitHub repository (emailkudeweta/rambox-mobile)..." -ForegroundColor Yellow
+# 4. Push ke GitHub
+Write-Host "[4/4] Mengunggah (push) branch main & tag $Tag ke GitHub..." -ForegroundColor Yellow
 
-# Periksa apakah ada token di environment variable GITHUB_TOKEN
 if ($env:GITHUB_TOKEN) {
-    Write-Host "Menggunakan GITHUB_TOKEN dari environment variable..." -ForegroundColor Green
     $pushUrl = "https://emailkudeweta:$($env:GITHUB_TOKEN)@github.com/emailkudeweta/rambox-mobile.git"
     & git push $pushUrl main --force
-    if ($Tag) {
-        & git push $pushUrl $Tag --force
-    }
+    & git push $pushUrl $Tag --force
 } else {
-    # Jalankan git push biasa (jika sudah login di browser / Git Credential Manager)
     try {
         & git push origin main
-        if ($Tag) {
-            & git push origin $Tag
-        }
+        & git push origin $Tag --force
     } catch {
         Write-Host ""
         Write-Host "⚠️ Autentikasi GitHub diperlukan untuk melakukan push otomatis." -ForegroundColor Yellow
@@ -60,10 +94,7 @@ if ($env:GITHUB_TOKEN) {
         if ($tokenInput) {
             $pushUrl = "https://emailkudeweta:$($tokenInput.Trim())@github.com/emailkudeweta/rambox-mobile.git"
             & git push $pushUrl main --force
-            if ($Tag) {
-                & git push $pushUrl $Tag --force
-            }
-            # Simpan token ke environment sementara jika sukses
+            & git push $pushUrl $Tag --force
             $env:GITHUB_TOKEN = $tokenInput.Trim()
             Write-Host "✅ Berhasil tersambung dan diunggah ke GitHub!" -ForegroundColor Green
         }
@@ -71,7 +102,7 @@ if ($env:GITHUB_TOKEN) {
 }
 
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "🎉 KODE BERHASIL DIUNGGAH KE GITHUB!" -ForegroundColor Green
-Write-Host "GitHub Pages & GitHub Actions sedang memproses update secara otomatis." -ForegroundColor Green
-Write-Host "Aplikasi di ponsel Anda akan segera menerima pembaruan OTA." -ForegroundColor Green
+Write-Host "🎉 RILIS $Tag BERHASIL DIUNGGAH KE GITHUB!" -ForegroundColor Green
+Write-Host "GitHub Actions sedang mem-build APK $Tag di cloud." -ForegroundColor Green
+Write-Host "Aplikasi di ponsel Anda akan segera menerima notifikasi OTA." -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green

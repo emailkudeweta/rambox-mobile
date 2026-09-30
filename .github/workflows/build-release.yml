@@ -61,10 +61,11 @@ jobs:
           name: Rambox Mobile ${{ github.event.inputs.tag_name || github.ref_name }}
           body: |
             ### 🚀 Rambox Mobile Update
-            - Single unified **Dynamic Island** theme with high-contrast UI.
-            - WhatsApp Web responsive layout with working login & QR code scanner.
-            - Active service deletion feature.
-            - Automated Over-The-Air (OTA) updates support.
+            - **Google Sign-In & OAuth**: Full support for Gmail, Google Drive, YouTube, and third-party Google OAuth logins.
+            - **Draggable Dynamic Island**: Move and place the island anywhere on screen with persistent coordinates.
+            - **Desktop-Parity Settings**: Full settings panel (General, Appearance, AdGuard DNS, App Data / Cache Cleaner).
+            - **WhatsApp Web Responsive**: High-contrast, single-pane layout with camera QR scanner.
+            - **Automated Over-The-Air (OTA) Updates**: In-app one-click update detection and installation.
           files: Rambox-Mobile.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
