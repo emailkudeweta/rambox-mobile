@@ -13,7 +13,12 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
 
   const handleGoBack = () => {
     if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.history.back();
+      try {
+        iframeRef.current.contentWindow.postMessage({ action: 'goBack' }, '*');
+      } catch (e) {}
+      try {
+        iframeRef.current.contentWindow.history.back();
+      } catch (e) {}
     }
   };
 

@@ -63,9 +63,8 @@ jobs:
             ### 🚀 Rambox Mobile Update
             - **Google Sign-In & OAuth**: Full support for Gmail, Google Drive, YouTube, and third-party Google OAuth logins.
             - **Draggable Dynamic Island**: Move and place the island anywhere on screen with persistent coordinates.
-            - **Desktop-Parity Settings**: Full settings panel (General, Appearance, AdGuard DNS, App Data / Cache Cleaner).
-            - **WhatsApp Web Responsive**: High-contrast, single-pane layout with camera QR scanner.
-            - **Automated Over-The-Air (OTA) Updates**: In-app one-click update detection and installation.
+            - **WhatsApp Android Native UX (Solusi 1)**: Tampilan WhatsApp Web dirombak total menyerupai WhatsApp Android APK asli (WhatsApp green header #008069, tombol kembali di ruang obrolan, Floating Action Button obrolan baru, single-pane mobile layout tanpa scroll horizontal).
+            - **Automated Over-The-Air (OTA) Updates**: In-app one-click update detection and seamless signature-matching installation.
           files: Rambox-Mobile.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

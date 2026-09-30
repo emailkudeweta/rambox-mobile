@@ -53,6 +53,10 @@ if (-not $Tag) {
         $gradleContent = $gradleContent -replace 'versionCode \d+', "versionCode $(100 + $patch)"
         $gradleContent = $gradleContent -replace 'versionName "[^"]+"', "versionName `"$newVer`""
         Set-Content -Path $gradlePath -Value $gradleContent -Encoding UTF8
+
+        Write-Host "Mengompilasi web assets dan sinkronisasi Capacitor..." -ForegroundColor Cyan
+        & npm run build
+        & npx cap sync android
     } else {
         $Tag = $candidateTag
     }

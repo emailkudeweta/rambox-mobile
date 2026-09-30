@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Download, Sparkles, X, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
-export const CURRENT_APP_VERSION = '1.0.2';
+export const CURRENT_APP_VERSION = '1.0.3';
 const GITHUB_REPO = 'emailkudeweta/rambox-mobile';
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
@@ -228,3 +228,4 @@ export default function AutoUpdaterModal({ isOpenManual, onCloseManual }) {
     </div>
   );
 }
+
