@@ -21,6 +21,9 @@ import android.os.Build;
 import android.os.Environment;
 import android.webkit.JavascriptInterface;
 import androidx.core.content.FileProvider;
+import androidx.webkit.WebViewFeature;
+import androidx.webkit.WebSettingsCompat;
+import java.util.Collections;
 import java.io.File;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -65,6 +68,25 @@ public class MainActivity extends BridgeActivity {
     // Remote GitHub Pages live URL for 100% automated OTA updates without APK installation
     private static final String GITHUB_PAGES_URL = "https://emailkudeweta.github.io/rambox-mobile";
 
+    private String cachedRealChromeMobileUa = null;
+
+    private String getRealChromeMobileUa() {
+        if (cachedRealChromeMobileUa != null) {
+            return cachedRealChromeMobileUa;
+        }
+        try {
+            String baseUa = WebSettings.getDefaultUserAgent(this);
+            cachedRealChromeMobileUa = baseUa
+                .replace("; wv", "")
+                .replace(";  wv", "")
+                .replace(";wv", "")
+                .replaceAll("Version/\\d+\\.\\d+\\s*", "");
+        } catch (Exception e) {
+            cachedRealChromeMobileUa = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+        }
+        return cachedRealChromeMobileUa;
+    }
+
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
@@ -81,8 +103,15 @@ public class MainActivity extends BridgeActivity {
 
         WebSettings settings = webView.getSettings();
 
-        // 1. Set Desktop Chrome UA as default for WhatsApp Web compatibility
-        settings.setUserAgentString(DESKTOP_CHROME_UA);
+        // 1. Set genuine Chrome Mobile UA by default for Google authentication & modern compatibility
+        settings.setUserAgentString(getRealChromeMobileUa());
+
+        // Suppress X-Requested-With header to prevent Google from detecting WebView
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, Collections.emptySet());
+            }
+        } catch (Throwable ignored) {}
 
         // 2. Enable modern HTML5, DOM Storage, Databases, and multi-window popups
         settings.setJavaScriptEnabled(true);
@@ -203,6 +232,149 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void openGoogleLogin(String targetUrl) {
+            openGoogleLoginDialog(targetUrl);
+        }
+    }
+
+    /**
+     * Dedicated Native Google Authentication Dialog:
+     * - Top-level window context (First-party, NOT an iframe).
+     * - Uses real Chrome on Android User-Agent (strips ; wv and Version/4.0).
+     * - Syncs all session cookies directly into CookieManager.
+     * - Automatically detects login completion and signals active services to reload.
+     */
+    public void openGoogleLoginDialog(String targetUrl) {
+        runOnUiThread(() -> {
+            try {
+                final Dialog dialog = new Dialog(MainActivity.this, android.R.style.Theme_DeviceDefault_Light_NoActionBar_Fullscreen);
+
+                LinearLayout layout = new LinearLayout(MainActivity.this);
+                layout.setOrientation(LinearLayout.VERTICAL);
+                layout.setBackgroundColor(Color.parseColor("#12121e"));
+
+                // Top Header Bar
+                LinearLayout header = new LinearLayout(MainActivity.this);
+                header.setOrientation(LinearLayout.HORIZONTAL);
+                header.setPadding(32, 28, 32, 28);
+                header.setBackgroundColor(Color.parseColor("#1c1c2e"));
+
+                TextView titleView = new TextView(MainActivity.this);
+                titleView.setText("Login Akun Google Resmi");
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+                titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+                titleView.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f));
+                header.addView(titleView);
+
+                Button closeBtn = new Button(MainActivity.this);
+                closeBtn.setText("Selesai / Tutup ✕");
+                closeBtn.setTextColor(Color.parseColor("#818cf8"));
+                closeBtn.setBackgroundColor(Color.TRANSPARENT);
+                closeBtn.setOnClickListener(v -> dialog.dismiss());
+                header.addView(closeBtn);
+
+                layout.addView(header);
+
+                WebView loginWebView = new WebView(MainActivity.this);
+                loginWebView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+                WebSettings lSettings = loginWebView.getSettings();
+                lSettings.setJavaScriptEnabled(true);
+                lSettings.setDomStorageEnabled(true);
+                lSettings.setDatabaseEnabled(true);
+                lSettings.setSupportMultipleWindows(true);
+                lSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+                // Authentic Chrome Mobile UA bypasses Google's disallowed_useragent block
+                lSettings.setUserAgentString(getRealChromeMobileUa());
+
+                // Suppress X-Requested-With header so Google doesn't block WebView
+                try {
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                        WebSettingsCompat.setRequestedWithHeaderOriginAllowList(lSettings, Collections.emptySet());
+                    }
+                } catch (Throwable ignored) {}
+
+                CookieManager cm = CookieManager.getInstance();
+                cm.setAcceptCookie(true);
+                cm.setAcceptThirdPartyCookies(loginWebView, true);
+
+                loginWebView.setWebChromeClient(new WebChromeClient());
+                loginWebView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
+                        Uri reqUri = req.getUrl();
+                        if (reqUri != null) {
+                            String s = reqUri.getScheme();
+                            if (s != null && !s.equalsIgnoreCase("http") && !s.equalsIgnoreCase("https")) {
+                                try {
+                                    Intent intent = new Intent(Intent.ACTION_VIEW, reqUri);
+                                    startActivity(intent);
+                                    return true;
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                        return false;
+                    }
+
+                    @Override
+                    public void onPageFinished(WebView v, String url) {
+                        super.onPageFinished(v, url);
+                        CookieManager.getInstance().flush();
+
+                        // Detect successful login: redirected away from accounts.google.com signin/challenge
+                        if (url != null && (
+                            url.contains("myaccount.google.com") ||
+                            url.contains("mail.google.com") ||
+                            url.contains("drive.google.com") ||
+                            url.contains("accounts.google.com/SignOutOptions") ||
+                            url.contains("accounts.google.com/b/0/AddSession") ||
+                            (!url.contains("accounts.google.com") && !url.contains("about:blank")) ||
+                            (url.contains("google.com") && !url.contains("signin") && !url.contains("ServiceLogin") && !url.contains("InteractiveLogin") && !url.contains("oauth"))
+                        )) {
+                            titleView.setText("Login Berhasil! ✓");
+                            titleView.setTextColor(Color.parseColor("#34d399"));
+                            loginWebView.postDelayed(() -> {
+                                try {
+                                    if (dialog.isShowing()) {
+                                        dialog.dismiss();
+                                    }
+                                } catch (Exception ignored) {}
+                            }, 1200);
+                        }
+                    }
+                });
+
+                dialog.setOnDismissListener(d -> {
+                    CookieManager.getInstance().flush();
+                    loginWebView.destroy();
+                    runOnUiThread(() -> {
+                        WebView mainWv = getBridge().getWebView();
+                        if (mainWv != null) {
+                            mainWv.evaluateJavascript(
+                                "window.dispatchEvent(new CustomEvent('google-login-done'));",
+                                null
+                            );
+                        }
+                    });
+                });
+
+                layout.addView(loginWebView);
+                dialog.setContentView(layout);
+                dialog.show();
+
+                String urlToLoad = (targetUrl != null && !targetUrl.isEmpty()) 
+                    ? targetUrl 
+                    : "https://accounts.google.com/ServiceLogin";
+                loginWebView.loadUrl(urlToLoad);
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error opening Google Login Dialog", e);
+            }
+        });
     }
 
     /**
@@ -256,9 +428,16 @@ public class MainActivity extends BridgeActivity {
             pSettings.setJavaScriptEnabled(true);
             pSettings.setDomStorageEnabled(true);
             pSettings.setDatabaseEnabled(true);
-            pSettings.setUserAgentString(CLEAN_CHROME_MOBILE_UA);
+            pSettings.setUserAgentString(getRealChromeMobileUa());
             pSettings.setSupportMultipleWindows(true);
             pSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+            // Suppress X-Requested-With header so Google doesn't block WebView
+            try {
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                    WebSettingsCompat.setRequestedWithHeaderOriginAllowList(pSettings, Collections.emptySet());
+                }
+            } catch (Throwable ignored) {}
 
             CookieManager.getInstance().setAcceptCookie(true);
             CookieManager.getInstance().setAcceptThirdPartyCookies(popupWebView, true);
@@ -273,6 +452,17 @@ public class MainActivity extends BridgeActivity {
             popupWebView.setWebViewClient(new WebViewClient() {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
+                    Uri reqUri = req.getUrl();
+                    if (reqUri != null) {
+                        String s = reqUri.getScheme();
+                        if (s != null && !s.equalsIgnoreCase("http") && !s.equalsIgnoreCase("https")) {
+                            try {
+                                Intent intent = new Intent(Intent.ACTION_VIEW, reqUri);
+                                startActivity(intent);
+                                return true;
+                            } catch (Exception ignored) {}
+                        }
+                    }
                     return false;
                 }
 
@@ -280,12 +470,41 @@ public class MainActivity extends BridgeActivity {
                 public void onPageFinished(WebView v, String url) {
                     super.onPageFinished(v, url);
                     CookieManager.getInstance().flush();
+
+                    // Detect OAuth popup completion
+                    if (url != null && (
+                        url.contains("myaccount.google.com") ||
+                        url.contains("/oauth/callback") ||
+                        url.contains("/callback") ||
+                        url.contains("/auth/success") ||
+                        url.contains("accounts.google.com/SignOutOptions") ||
+                        (!url.contains("accounts.google.com") && !url.contains("about:blank") && !url.contains("/oauth") && !url.contains("/signin"))
+                    )) {
+                        titleView.setText("Autentikasi Berhasil! ✓");
+                        titleView.setTextColor(Color.parseColor("#34d399"));
+                        popupWebView.postDelayed(() -> {
+                            try {
+                                if (dialog.isShowing()) {
+                                    dialog.dismiss();
+                                }
+                            } catch (Exception ignored) {}
+                        }, 1200);
+                    }
                 }
             });
 
             dialog.setOnDismissListener(d -> {
                 popupWebView.destroy();
                 CookieManager.getInstance().flush();
+                runOnUiThread(() -> {
+                    WebView mainWv = getBridge().getWebView();
+                    if (mainWv != null) {
+                        mainWv.evaluateJavascript(
+                            "window.dispatchEvent(new CustomEvent('google-login-done'));",
+                            null
+                        );
+                    }
+                });
             });
 
             layout.addView(popupWebView);
@@ -329,6 +548,23 @@ public class MainActivity extends BridgeActivity {
         }
 
         @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            Uri uri = request.getUrl();
+            if (uri != null) {
+                String host = uri.getHost();
+                if (host != null && (host.equalsIgnoreCase("accounts.google.com") || host.endsWith(".accounts.google.com"))) {
+                    String path = uri.getPath() != null ? uri.getPath().toLowerCase(Locale.ROOT) : "";
+                    if (!path.endsWith(".js") && !path.contains("/gsi/")) {
+                        Log.d(TAG, "accounts.google.com requested in shouldOverrideUrlLoading, opening native sheet: " + uri);
+                        openGoogleLoginDialog(uri.toString());
+                        return true;
+                    }
+                }
+            }
+            return super.shouldOverrideUrlLoading(view, request);
+        }
+
+        @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
             if (uri == null) {
@@ -357,8 +593,22 @@ public class MainActivity extends BridgeActivity {
             boolean isHtmlRequest = accept != null && accept.contains("text/html");
             boolean isRoot = uri.getPath() == null || uri.getPath().isEmpty() || uri.getPath().equals("/");
             boolean isGet = "GET".equalsIgnoreCase(request.getMethod());
-
             boolean isDocument = isGet && (isHtmlRequest || isRoot);
+
+            // 3. Delegate accounts.google.com document navigations to the secure native Google Login Sheet
+            if (host != null && (host.equalsIgnoreCase("accounts.google.com") || host.endsWith(".accounts.google.com"))) {
+                String path = uri.getPath() != null ? uri.getPath().toLowerCase(Locale.ROOT) : "";
+                boolean isSubresource = path.endsWith(".js") || path.endsWith(".css") || path.endsWith(".png") || path.endsWith(".svg") || path.contains("/gsi/");
+                if (!isSubresource && isDocument) {
+                    Log.d(TAG, "accounts.google.com document navigation detected in shouldInterceptRequest, launching native sheet: " + uri);
+                    openGoogleLoginDialog(uri.toString());
+                    String noticeHtml = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><style>body{background:#0c0c14;color:#fff;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;padding:24px;box-sizing:border-box;text-align:center;}h3{color:#818cf8;margin-bottom:8px;font-size:17px;}p{font-size:13px;opacity:0.75;line-height:1.5;max-width:320px;}</style></head><body><div style=\"width:48px;height:48px;border-radius:16px;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;margin-bottom:12px;\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#818cf8\" stroke-width=\"2\"><path d=\"M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3\"/></svg></div><h3>Autentikasi Akun Google</h3><p>Membuka lembar login resmi Google di atas layar. Silakan selesaikan proses masuk Anda.</p></body></html>";
+                    return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(noticeHtml.getBytes(StandardCharsets.UTF_8)));
+                } else {
+                    // Let subresources (JS scripts like /gsi/client) fetch natively
+                    return super.shouldInterceptRequest(view, request);
+                }
+            }
 
             // ONLY intercept HTML document navigations!
             // Subresources (JS, CSS, WASM, WebWorkers, WebSockets, Images) MUST be handled natively
@@ -377,7 +627,7 @@ public class MainActivity extends BridgeActivity {
                     for (Map.Entry<String, String> entry : reqHeaders.entrySet()) {
                         String k = entry.getKey();
                         String lowerK = k.toLowerCase(Locale.ROOT);
-                        // Filter out iframe-specific Sec-Fetch and localhost headers that cause upstream HTTP 400
+                        // Filter out iframe-specific Sec-Fetch, localhost, and x-requested-with headers
                         if (!lowerK.equals("host") &&
                             !lowerK.equals("accept-encoding") &&
                             !lowerK.equals("sec-fetch-site") &&
@@ -385,7 +635,8 @@ public class MainActivity extends BridgeActivity {
                             !lowerK.equals("sec-fetch-dest") &&
                             !lowerK.equals("sec-fetch-user") &&
                             !lowerK.equals("origin") &&
-                            !lowerK.equals("referer")) {
+                            !lowerK.equals("referer") &&
+                            !lowerK.equals("x-requested-with")) {
                             reqBuilder.addHeader(k, entry.getValue());
                         }
                     }
@@ -405,7 +656,7 @@ public class MainActivity extends BridgeActivity {
                     reqBuilder.header("sec-ch-ua-mobile", "?0");
                     reqBuilder.header("sec-ch-ua-platform", "\"Windows\"");
                 } else {
-                    reqBuilder.header("User-Agent", CLEAN_CHROME_MOBILE_UA);
+                    reqBuilder.header("User-Agent", getRealChromeMobileUa());
                     reqBuilder.header("sec-ch-ua-mobile", "?1");
                     reqBuilder.header("sec-ch-ua-platform", "\"Android\"");
                 }
@@ -417,6 +668,15 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 Response response = httpClient.newCall(reqBuilder.build()).execute();
+
+                // Check if upstream service redirected to Google Login (e.g. Gmail, Drive, or OAuth)
+                okhttp3.HttpUrl finalUrl = response.request().url();
+                if (finalUrl.host().equalsIgnoreCase("accounts.google.com") || finalUrl.host().endsWith(".accounts.google.com")) {
+                    Log.d(TAG, "OkHttp redirected to accounts.google.com: " + finalUrl + ", launching native sheet!");
+                    openGoogleLoginDialog(finalUrl.toString());
+                    String noticeHtml = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><style>body{background:#0c0c14;color:#fff;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;padding:24px;box-sizing:border-box;text-align:center;}h3{color:#818cf8;margin-bottom:8px;font-size:17px;}p{font-size:13px;opacity:0.75;line-height:1.5;max-width:320px;}</style></head><body><div style=\"width:48px;height:48px;border-radius:16px;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;margin-bottom:12px;\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#818cf8\" stroke-width=\"2\"><path d=\"M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3\"/></svg></div><h3>Autentikasi Akun Google</h3><p>Membuka lembar login resmi Google di atas layar. Silakan selesaikan proses masuk Anda.</p></body></html>";
+                    return new WebResourceResponse("text/html", "UTF-8", new ByteArrayInputStream(noticeHtml.getBytes(StandardCharsets.UTF_8)));
+                }
 
                 // Save cookies returned by server
                 for (String setCookie : response.headers("Set-Cookie")) {
@@ -463,14 +723,17 @@ public class MainActivity extends BridgeActivity {
                     StringBuilder injection = new StringBuilder();
                     injection.append("\n<!-- RAMBOX CORE KERNEL -->\n");
 
-                    // 1. Anti-Framebusting: Spoof window.top and window.parent
-                    injection.append("<script id=\"rb-anti-framebust\">\n")
-                        .append("try {\n")
-                        .append("  Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });\n")
-                        .append("  Object.defineProperty(window, 'parent', { get: function() { return window.self; }, configurable: true });\n")
-                        .append("  Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });\n")
-                        .append("} catch(e) {}\n")
-                        .append("</script>\n");
+                    // 1. Anti-Framebusting: Spoof window.top and window.parent (NEVER inject on Google domains)
+                    boolean isGoogle = host != null && (host.contains("google.") || host.contains("gstatic.") || host.contains("googleapis."));
+                    if (!isGoogle) {
+                        injection.append("<script id=\"rb-anti-framebust\">\n")
+                            .append("try {\n")
+                            .append("  Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });\n")
+                            .append("  Object.defineProperty(window, 'parent', { get: function() { return window.self; }, configurable: true });\n")
+                            .append("  Object.defineProperty(window, 'frameElement', { get: function() { return null; }, configurable: true });\n")
+                            .append("} catch(e) {}\n")
+                            .append("</script>\n");
+                    }
 
                     if (isWhatsApp) {
                         // Desktop Client Hints stealth for WhatsApp

@@ -134,7 +134,6 @@ export default function ChromeMobileBrowser({ app, isDarkMode = true }) {
                 title={tab.title}
                 className="w-full h-full border-none"
                 allow="camera; microphone; geolocation; clipboard-read; clipboard-write; autoplay; fullscreen"
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
               />
             </div>
           );

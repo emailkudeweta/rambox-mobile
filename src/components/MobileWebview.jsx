@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import ChromeMobileBrowser from './ChromeMobileBrowser';
-import { RotateCw, AlertTriangle, ChevronLeft, ChevronRight, Compass, Trash2 } from 'lucide-react';
+import { RotateCw, AlertTriangle, ChevronLeft, ChevronRight, Compass, Trash2, LogIn } from 'lucide-react';
 
 export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }) {
   const iframeRef = useRef(null);
@@ -30,6 +30,20 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
       iframeRef.current.src = serviceUrl;
     }
   };
+
+  useEffect(() => {
+    const handleGoogleLoginDone = () => {
+      // Reload iframe automatically when Google login completes in native sheet
+      if (iframeRef.current) {
+        setIsLoading(true);
+        setHasError(false);
+        iframeRef.current.src = iframeRef.current.src || serviceUrl;
+      }
+    };
+
+    window.addEventListener('google-login-done', handleGoogleLoginDone);
+    return () => window.removeEventListener('google-login-done', handleGoogleLoginDone);
+  }, [serviceUrl]);
 
   useEffect(() => {
     const handleWebviewAction = (e) => {
@@ -78,6 +92,19 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
               title="Maju"
             >
               <ChevronRight size={16} />
+            </button>
+            <button
+              onClick={() => {
+                if (window.RamboxUpdater && window.RamboxUpdater.openGoogleLogin) {
+                  window.RamboxUpdater.openGoogleLogin(serviceUrl);
+                } else {
+                  window.open('https://accounts.google.com/ServiceLogin', '_blank');
+                }
+              }}
+              className="p-1 rounded-full hover:bg-amber-500/20 active:scale-90 transition-transform text-amber-400 hover:text-amber-300"
+              title="Login Akun Google Resmi"
+            >
+              <LogIn size={13} />
             </button>
             {onRemoveApp && (
               <button
@@ -130,13 +157,28 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
               Pastikan Anda terhubung ke internet untuk mengakses {app.name}.
             </p>
           </div>
-          <button
-            onClick={handleReload}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform"
-          >
-            <RotateCw size={14} />
-            <span>Coba Lagi</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleReload}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-transform"
+            >
+              <RotateCw size={14} />
+              <span>Coba Lagi</span>
+            </button>
+            <button
+              onClick={() => {
+                if (window.RamboxUpdater && window.RamboxUpdater.openGoogleLogin) {
+                  window.RamboxUpdater.openGoogleLogin(serviceUrl);
+                } else {
+                  window.open('https://accounts.google.com/ServiceLogin', '_blank');
+                }
+              }}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-semibold flex items-center space-x-2 shadow-lg shadow-amber-600/20 active:scale-95 transition-transform"
+            >
+              <LogIn size={14} />
+              <span>Login Google</span>
+            </button>
+          </div>
         </div>
       )}
 

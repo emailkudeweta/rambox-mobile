@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Settings, X, ShieldAlert, Trash2, CheckCircle2, Loader2, 
   VolumeX, Volume2, Globe, Monitor, Moon, Sun, Smartphone, 
-  ShieldCheck, RefreshCw, Sparkles, ExternalLink, Sliders
+  ShieldCheck, RefreshCw, Sparkles, ExternalLink, Sliders, LogIn
 } from 'lucide-react';
 import { CURRENT_APP_VERSION } from './AutoUpdaterModal';
 
@@ -181,6 +181,36 @@ export default function SettingsModal({
                     className="w-4 h-4 accent-indigo-600 rounded"
                   />
                 </label>
+
+                {/* GOOGLE ACCOUNT AUTHENTICATION */}
+                <div className="p-3.5 rounded-2xl bg-indigo-600/10 border border-indigo-500/25 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                        <LogIn size={15} />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-xs">Akun Google Resmi</div>
+                        <div className="text-[10px] text-white/50">Masuk untuk Gmail, Drive & OAuth</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (window.RamboxUpdater && window.RamboxUpdater.openGoogleLogin) {
+                          window.RamboxUpdater.openGoogleLogin("https://accounts.google.com/ServiceLogin");
+                        } else {
+                          window.open("https://accounts.google.com/ServiceLogin", "_blank");
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] shadow-md shadow-indigo-600/20 active:scale-95 transition-all"
+                    >
+                      Login Google
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/60 leading-tight">
+                    Sesi autentikasi Google tersimpan aman di Android CookieManager untuk seluruh tab & layanan.
+                  </p>
+                </div>
               </div>
             </div>
           )}
