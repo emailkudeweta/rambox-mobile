@@ -6,7 +6,9 @@ export const DEFAULT_SERVICES = [
     category: 'Messaging',
     iconPath: './Icon/whatsapp.ico',
     color: '#22c55e',
-    isMobileOptimized: true
+    isNativeLauncher: true,
+    packageName: 'com.whatsapp',
+    fallbackPackageNames: ['com.whatsapp.w4b']
   },
   { 
     id: 'app-chrome', 
@@ -39,6 +41,8 @@ export const DEFAULT_SERVICES = [
     url: 'https://m.youtube.com', 
     category: 'Media',
     iconPath: './Icon/youtube.ico',
-    color: '#ef4444'
+    color: '#ef4444',
+    isNativeLauncher: true,
+    packageName: 'com.google.android.youtube'
   }
 ];

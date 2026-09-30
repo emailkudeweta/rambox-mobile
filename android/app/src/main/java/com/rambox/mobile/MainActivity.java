@@ -19,6 +19,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Environment;
+import android.provider.Settings;
+import android.content.pm.PackageManager;
 import android.webkit.JavascriptInterface;
 import androidx.core.content.FileProvider;
 import androidx.webkit.WebViewFeature;
@@ -134,8 +136,9 @@ public class MainActivity extends BridgeActivity {
         // 5. Attach enhanced WebViewClient for X-Frame-Options stripping and Anti-Framebusting
         webView.setWebViewClient(new RamboxWebViewClient(getBridge()));
 
-        // 6. Register Auto-Updater JavaScript Bridge
+        // 6. Register Auto-Updater & Native Direct Launcher JavaScript Bridges
         webView.addJavascriptInterface(new RamboxAppUpdaterInterface(), "RamboxUpdater");
+        webView.addJavascriptInterface(new RamboxNativeBridge(), "RamboxNative");
 
         Log.d(TAG, "Rambox Mobile WebEngine initialized successfully.");
     }
@@ -236,6 +239,106 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void openGoogleLogin(String targetUrl) {
             openGoogleLoginDialog(targetUrl);
+        }
+    }
+
+    /**
+     * Solusi 2: Direct Native Launcher Bridge & Floating Dynamic Island Controller
+     */
+    public class RamboxNativeBridge {
+        @JavascriptInterface
+        public boolean launchPackage(String packageName, String fallbackUrl) {
+            runOnUiThread(() -> {
+                try {
+                    PackageManager pm = getPackageManager();
+                    Intent intent = pm.getLaunchIntentForPackage(packageName);
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                        startActivity(intent);
+                        startFloatingOverlay();
+                    } else if (fallbackUrl != null && !fallbackUrl.isEmpty()) {
+                        Intent viewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl));
+                        viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(viewIntent);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error launching package: " + packageName, e);
+                }
+            });
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean isPackageInstalled(String packageName) {
+            try {
+                PackageManager pm = getPackageManager();
+                pm.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean canDrawOverlays() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                return Settings.canDrawOverlays(MainActivity.this);
+            }
+            return true;
+        }
+
+        @JavascriptInterface
+        public void requestOverlayPermission() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(MainActivity.this)) {
+                Intent intent = new Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            }
+        }
+
+        @JavascriptInterface
+        public void startFloatingIsland() {
+            runOnUiThread(() -> startFloatingOverlay());
+        }
+
+        @JavascriptInterface
+        public void stopFloatingIsland() {
+            runOnUiThread(() -> stopFloatingOverlay());
+        }
+
+        @JavascriptInterface
+        public boolean isFloatingIslandRunning() {
+            return FloatingIslandService.isRunning;
+        }
+    }
+
+    public void startFloatingOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                return;
+            }
+        }
+        try {
+            Intent serviceIntent = new Intent(this, FloatingIslandService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting FloatingIslandService", e);
+        }
+    }
+
+    public void stopFloatingOverlay() {
+        try {
+            Intent serviceIntent = new Intent(this, FloatingIslandService.class);
+            stopService(serviceIntent);
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping FloatingIslandService", e);
         }
     }
 

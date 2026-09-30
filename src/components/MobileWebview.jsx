@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import ChromeMobileBrowser from './ChromeMobileBrowser';
+import NativeAppLauncherPanel from './NativeAppLauncherPanel';
 import { RotateCw, AlertTriangle, ChevronLeft, ChevronRight, Compass, Trash2, LogIn } from 'lucide-react';
 
 export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }) {
@@ -7,6 +8,7 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isNavPillExpanded, setIsNavPillExpanded] = useState(false);
+  const [forceWebView, setForceWebView] = useState(false);
 
   // Keep URL clean without unsupported query parameters
   const serviceUrl = app.url || 'about:blank';
@@ -66,6 +68,16 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
     window.addEventListener('mobile-webview-action', handleWebviewAction);
     return () => window.removeEventListener('mobile-webview-action', handleWebviewAction);
   }, [app.id, serviceUrl]);
+
+  if (app.isNativeLauncher && !forceWebView) {
+    return (
+      <NativeAppLauncherPanel 
+        app={app} 
+        isActive={isActive} 
+        onFallbackToWeb={() => setForceWebView(true)} 
+      />
+    );
+  }
 
   if (app.isBrowser) {
     return <ChromeMobileBrowser app={app} isDarkMode={isDarkMode} />;

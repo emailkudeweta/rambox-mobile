@@ -63,7 +63,8 @@ jobs:
             ### 🚀 Rambox Mobile Update
             - **Google Sign-In & OAuth**: Full support for Gmail, Google Drive, YouTube, and third-party Google OAuth logins.
             - **Draggable Dynamic Island**: Move and place the island anywhere on screen with persistent coordinates.
-            - **WhatsApp Android Native UX (Solusi 1)**: Tampilan WhatsApp Web dirombak total menyerupai WhatsApp Android APK asli (WhatsApp green header #008069, tombol kembali di ruang obrolan, Floating Action Button obrolan baru, single-pane mobile layout tanpa scroll horizontal).
+            - **Direct Native Launcher (Solusi 2)**: WhatsApp & YouTube langsung membuka aplikasi APK resmi di perangkat tanpa beban webview (Zero RAM overhead).
+            - **Floating Dynamic Island Overlay**: Dynamic Island dapat mengapung di layar di atas WhatsApp APK atau YouTube APK untuk beralih kembali ke Rambox dengan satu sentuhan.
             - **Automated Over-The-Air (OTA) Updates**: In-app one-click update detection and seamless signature-matching installation.
           files: Rambox-Mobile.apk
         env:

@@ -19,7 +19,21 @@ export default function App() {
   const [apps, setApps] = useState(() => {
     try {
       const saved = localStorage.getItem('rambox_mobile_apps');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map(app => {
+          const defaultMatch = DEFAULT_SERVICES.find(d => d.id === app.id);
+          if (defaultMatch && defaultMatch.isNativeLauncher) {
+            return {
+              ...app,
+              isNativeLauncher: defaultMatch.isNativeLauncher,
+              packageName: defaultMatch.packageName,
+              fallbackPackageNames: defaultMatch.fallbackPackageNames
+            };
+          }
+          return app;
+        });
+      }
     } catch (e) {}
     return DEFAULT_SERVICES;
   });
