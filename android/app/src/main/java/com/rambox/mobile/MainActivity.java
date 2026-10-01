@@ -849,7 +849,7 @@ public class MainActivity extends BridgeActivity {
 
                     // 1. Anti-Framebusting: Spoof window.top and window.parent (NEVER inject on Google domains)
                     boolean isGoogle = host != null && (host.contains("google.") || host.contains("gstatic.") || host.contains("googleapis."));
-                    if (!isGoogle) {
+                    if (!isGoogle && !isWhatsApp) {
                         injection.append("<script id=\"rb-anti-framebust\">\n")
                             .append("try {\n")
                             .append("  Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });\n")
@@ -863,6 +863,7 @@ public class MainActivity extends BridgeActivity {
                         // Desktop Client Hints stealth for WhatsApp
                         injection.append("<script id=\"rb-wa-stealth\">\n")
                             .append("try {\n")
+                            .append("  window.__rb_parent = window.parent;\n")
                             .append("  Object.defineProperty(navigator, 'platform', { get: function() { return 'Win32'; }, configurable: true });\n")
                             .append("  Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 1; }, configurable: true });\n")
                             .append("  if (navigator.userAgentData) {\n")
@@ -899,16 +900,9 @@ public class MainActivity extends BridgeActivity {
                             .append("} catch(e) {}\n")
                             .append("</script>\n");
 
-                        // Viewport & Assets for Custom WhatsApp Mobile Client
-                        injection.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover\">\n");
-                        injection.append("<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Roboto:wght@400;500;700&display=swap\">\n");
-                        injection.append("<link rel=\"stylesheet\" href=\"/wa-clone/whatsapp-clone.css\">\n");
-                        injection.append("<script src=\"/wa-clone/tailwindcss.js\"></script>\n");
-                        injection.append("<script id=\"rb-wa-tailwind-cfg\">\n")
-                            .append("tailwind.config = { theme: { extend: { fontFamily: { sans: ['Roboto', 'sans-serif'] }, colors: { wa: { green: '#25D366', dark: '#128C7E', darker: '#075E54', text: '#111B21', subtext: '#667781', divider: '#F2F2F2', bubble: '#D9FDD3' } } } } };\n")
-                            .append("</script>\n");
+                        // Inject Background Multi-Device Session Bridge into web.whatsapp.com
                         injection.append("<script src=\"/wa-clone/wppconnect-wa.js\"></script>\n");
-                        injection.append("<script src=\"/wa-clone/whatsapp-clone.js\"></script>\n");
+                        injection.append("<script src=\"/wa-clone/wa-bridge.js\"></script>\n");
                     } else {
                         // General mobile services styling: enforce touch scrolling and prevent horizontal overflow
                         if (!html.toLowerCase(Locale.ROOT).contains("name=\"viewport\"")) {

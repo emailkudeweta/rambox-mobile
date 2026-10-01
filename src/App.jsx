@@ -26,6 +26,7 @@ export default function App() {
           if (defaultMatch) {
             return {
               ...app,
+              url: app.id === 'app-whatsapp' ? defaultMatch.url : (app.url || defaultMatch.url),
               isNativeLauncher: !!defaultMatch.isNativeLauncher,
               packageName: defaultMatch.packageName,
               fallbackPackageNames: defaultMatch.fallbackPackageNames

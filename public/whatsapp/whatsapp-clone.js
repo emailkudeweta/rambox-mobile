@@ -18,7 +18,7 @@
   /* ============================================================== */
   function ensureRoot() {
     let root = document.getElementById('rb-wa-root');
-    if (!root) {
+    if (!root && document.body) {
       root = document.createElement('div');
       root.id = 'rb-wa-root';
       root.innerHTML = `
@@ -31,7 +31,129 @@
     return root;
   }
 
-  ensureRoot();
+  /* ============================================================== */
+  /* 1.5. POSTMESSAGE SESSION BRIDGE CLIENT                        */
+  /* ============================================================== */
+  const pendingCmds = new Map();
+  let cmdCounter = 0;
+  let isWaAuthenticated = false;
+  const bridgeListeners = {};
+
+  function sendBridgeCmd(cmd, args = {}) {
+    return new Promise((resolve, reject) => {
+      const bridgeIframe = document.getElementById('wa-session-bridge');
+      if (!bridgeIframe || !bridgeIframe.contentWindow) {
+        return reject(new Error('Session bridge iframe not found'));
+      }
+      const cmdId = ++cmdCounter;
+      pendingCmds.set(cmdId, { resolve, reject });
+      try {
+        bridgeIframe.contentWindow.postMessage({ type: 'WA_BRIDGE_CMD', cmdId, cmd, args }, '*');
+      } catch (err) {
+        pendingCmds.delete(cmdId);
+        return reject(err);
+      }
+      setTimeout(() => {
+        if (pendingCmds.has(cmdId)) {
+          pendingCmds.delete(cmdId);
+          reject(new Error('Bridge command timeout: ' + cmd));
+        }
+      }, 15000);
+    });
+  }
+
+  // Transparent window.WPP proxy that delegates all calls to the session bridge
+  window.WPP = {
+    chat: {
+      list: () => sendBridgeCmd('GET_CHATS'),
+      getMessages: (chatId, opts = {}) => sendBridgeCmd('GET_MESSAGES', { chatId, count: opts.count || 50 }),
+      sendTextMessage: (chatId, text) => sendBridgeCmd('SEND_TEXT', { chatId, text }),
+      markIsRead: (chatId) => sendBridgeCmd('MARK_READ', { chatId }),
+      markIsComposing: (chatId, duration) => sendBridgeCmd('MARK_COMPOSING', { chatId, duration })
+    },
+    profile: {
+      getMyProfile: () => sendBridgeCmd('GET_MY_PROFILE'),
+      getMyProfilePic: () => sendBridgeCmd('GET_MY_PIC')
+    },
+    status: {
+      getStatuses: () => sendBridgeCmd('GET_STATUSES')
+    },
+    community: {
+      list: () => sendBridgeCmd('GET_COMMUNITIES')
+    },
+    newsletter: {
+      list: () => sendBridgeCmd('GET_NEWSLETTERS')
+    },
+    call: {
+      getCalls: () => sendBridgeCmd('GET_CALLS')
+    },
+    conn: {
+      isAuthenticated: () => isWaAuthenticated,
+      genLinkDeviceCodeForPhoneNumber: (phone) => sendBridgeCmd('PAIRING_CODE', { phone }).then(r => r?.code),
+      logout: () => sendBridgeCmd('LOGOUT')
+    },
+    on: (evt, cb) => {
+      bridgeListeners[evt] = bridgeListeners[evt] || [];
+      bridgeListeners[evt].push(cb);
+    },
+    emit: (evt, data) => {
+      if (bridgeListeners[evt]) {
+        bridgeListeners[evt].forEach(cb => { try { cb(data); } catch(e){} });
+      }
+    }
+  };
+
+  // Listen to bridge messages from the hidden iframe
+  window.addEventListener('message', (event) => {
+    if (!event.data) return;
+
+    // Hardware back action from Rambox Mobile
+    if (event.data.action === 'goBack') {
+      const pages = document.getElementById('pages');
+      if (pages && pages.children.length > 0) {
+        back();
+      }
+      return;
+    }
+
+    // Response from bridge command
+    if (event.data.type === 'WA_BRIDGE_RESP') {
+      const { cmdId, success, result, error } = event.data;
+      const pending = pendingCmds.get(cmdId);
+      if (pending) {
+        pendingCmds.delete(cmdId);
+        if (success) pending.resolve(result);
+        else pending.reject(new Error(error));
+      }
+      return;
+    }
+
+    // Proactive event from bridge
+    if (event.data.type === 'WA_BRIDGE') {
+      const action = event.data.action;
+      if (action === 'QR_DATA_URL') {
+        isWaAuthenticated = false;
+        displayQrCode(event.data.dataUrl);
+      } else if (action === 'AUTH_SUCCESS') {
+        isWaAuthenticated = true;
+        WPP.emit('conn.authenticated');
+        startAuthenticatedApp();
+      } else if (action === 'NEED_AUTH') {
+        isWaAuthenticated = false;
+        renderQrScreen();
+      } else if (action === 'NEW_MSG') {
+        handleIncomingMessage(event.data.msg);
+        WPP.emit('chat.new_message', event.data.msg);
+      } else if (action === 'MSG_ACK') {
+        handleMessageAck(event.data.ack);
+        WPP.emit('chat.msg_ack', event.data.ack);
+      } else if (action === 'LOGOUT') {
+        isWaAuthenticated = false;
+        WPP.emit('conn.logout');
+        renderQrScreen();
+      }
+    }
+  });
 
   /* ============================================================== */
   /* 2. HELPERS & UTILITIES (from WhatsApp Mobile Clone)           */
@@ -1427,6 +1549,18 @@
     pollQrCanvas();
   }
 
+  function displayQrCode(dataUrl) {
+    if (!document.body.classList.contains('wa-clone-qr')) {
+      renderQrScreen();
+    }
+    const holder = document.getElementById('qr-canvas-holder');
+    const spinner = document.getElementById('qr-loading-spinner');
+    if (spinner) spinner.style.display = 'none';
+    if (holder) {
+      holder.innerHTML = `<img src="${dataUrl}" alt="WhatsApp QR Code" class="w-full h-full object-contain rounded-xl select-none" />`;
+    }
+  }
+
   window.__wa_togglePhonePairing = function () {
     const box = document.getElementById('phone-pairing-box');
     if (box) box.classList.toggle('hidden');
@@ -1441,52 +1575,22 @@
     const phone = input.value.trim().replace(/[^0-9]/g, '');
     toast('Meminta kode pairing...');
     
-    if (window.WPP && WPP.conn && WPP.conn.genLinkDeviceCodeForPhoneNumber) {
-      try {
-        const code = await WPP.conn.genLinkDeviceCodeForPhoneNumber(phone);
-        if (code && display && valElem) {
-          valElem.textContent = code;
-          display.classList.remove('hidden');
-        }
-      } catch (err) {
-        console.error('Pairing code error:', err);
+    try {
+      const code = await WPP.conn.genLinkDeviceCodeForPhoneNumber(phone);
+      if (code && display && valElem) {
+        valElem.textContent = code;
+        display.classList.remove('hidden');
+      } else {
         toast('Gagal mendapatkan kode pairing. Gunakan kode QR.');
       }
-    } else {
-      toast('Fitur kode telepon belum siap, silakan gunakan QR');
+    } catch (err) {
+      console.error('Pairing code error:', err);
+      toast('Gagal mendapatkan kode pairing. Gunakan kode QR.');
     }
   };
 
   function pollQrCanvas() {
-    let attempts = 0;
-    const interval = setInterval(() => {
-      attempts++;
-      const holder = document.getElementById('qr-canvas-holder');
-      const spinner = document.getElementById('qr-loading-spinner');
-      
-      // Look for WhatsApp Web's real QR code canvas
-      const waCanvas = document.querySelector('div[data-ref] canvas') || document.querySelector('canvas[aria-label]') || document.querySelector('canvas');
-      if (waCanvas && holder) {
-        spinner && (spinner.style.display = 'none');
-        holder.innerHTML = '';
-        const cloneCanvas = document.createElement('canvas');
-        cloneCanvas.width = waCanvas.width || 256;
-        cloneCanvas.height = waCanvas.height || 256;
-        cloneCanvas.style.width = '100%';
-        cloneCanvas.style.height = '100%';
-        cloneCanvas.style.borderRadius = '12px';
-        const ctx = cloneCanvas.getContext('2d');
-        ctx.drawImage(waCanvas, 0, 0);
-        holder.appendChild(cloneCanvas);
-      }
-
-      if (window.WPP && WPP.conn && WPP.conn.isAuthenticated && WPP.conn.isAuthenticated()) {
-        clearInterval(interval);
-        startAuthenticatedApp();
-      }
-
-      if (attempts > 300) clearInterval(interval);
-    }, 500);
+    sendBridgeCmd('GET_STATUS').catch(() => {});
   }
 
   /* ============================================================== */
@@ -1729,6 +1833,26 @@
   /* 10. SYSTEM INITIALIZATION & POLLING                            */
   /* ============================================================== */
   function initEngine() {
+    ensureRoot();
+
+    // Attach row long-press event safely
+    const appClone = $('#app-clone');
+    if (appClone && !appClone._eventsAttached) {
+      appClone._eventsAttached = true;
+      let ltRow;
+      appClone.addEventListener('pointerdown', e => {
+        lpf = 0;
+        const r = e.target.closest('[data-c]');
+        if (!r || tab != 0) return;
+        ltRow = setTimeout(() => {
+          lpf = 1;
+          sel.add(+r.dataset.c);
+          render();
+        }, 450);
+      });
+      ['pointerup', 'pointermove', 'pointercancel'].forEach(ev => appClone.addEventListener(ev, () => clearTimeout(ltRow)));
+    }
+
     const splash = `
       <div id="wa-splash" class="w-full h-full flex flex-col items-center justify-between p-8 bg-white text-wa-text select-none">
         <div class="flex-1 flex flex-col items-center justify-center">
@@ -1748,70 +1872,32 @@
         </div>
       </div>
     `;
-    $('#app-clone').innerHTML = splash;
+    if ($('#app-clone')) $('#app-clone').innerHTML = splash;
 
+    // Check status via bridge
+    let authChecked = false;
     let pollCount = 0;
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       pollCount++;
-
-      // Check if WPP is available
-      if (window.WPP && WPP.webpack) {
-        WPP.webpack.onReady(() => {
+      try {
+        const st = await sendBridgeCmd('GET_STATUS');
+        if (st && st.isAuthenticated) {
           clearInterval(interval);
-          if (WPP.conn && WPP.conn.isAuthenticated && WPP.conn.isAuthenticated()) {
-            startAuthenticatedApp();
-          } else {
-            renderQrScreen();
-            if (WPP.on) {
-              WPP.on('conn.authenticated', () => startAuthenticatedApp());
-              WPP.on('conn.qrcode_updated', () => pollQrCanvas());
-            }
-          }
-        });
-      }
+          authChecked = true;
+          isWaAuthenticated = true;
+          startAuthenticatedApp();
+          return;
+        }
+      } catch (e) {}
 
-      // Check if WhatsApp Web rendered its own QR canvas before WPP is ready
-      const waCanvas = document.querySelector('div[data-ref] canvas') || document.querySelector('canvas[aria-label]');
-      if (waCanvas && pollCount > 6) {
+      // Fallback: If not authenticated after 4 seconds, show QR screen
+      if (pollCount > 8 && !authChecked) {
         clearInterval(interval);
+        authChecked = true;
         renderQrScreen();
       }
-
-      // If standalone/dev mode without WPP after 8s: render interface with sample data
-      if (pollCount > 25) {
-        clearInterval(interval);
-        if (!document.body.classList.contains('wa-clone-active') && !document.body.classList.contains('wa-clone-qr')) {
-          console.log('[Rambox WA Clone] WPP not detected, rendering mobile interface...');
-          startAuthenticatedApp();
-        }
-      }
-    }, 400);
+    }, 500);
   }
-
-  // Handle hardware back button message from Android
-  window.addEventListener('message', e => {
-    if (e.data && e.data.action === 'goBack') {
-      const pages = document.getElementById('pages');
-      if (pages && pages.children.length > 0) {
-        back();
-      }
-    }
-  });
-
-  // Long press on chat row
-  const appClone = $('#app-clone');
-  let ltRow;
-  appClone.addEventListener('pointerdown', e => {
-    lpf = 0;
-    const r = e.target.closest('[data-c]');
-    if (!r || tab != 0) return;
-    ltRow = setTimeout(() => {
-      lpf = 1;
-      sel.add(+r.dataset.c);
-      render();
-    }, 450);
-  });
-  ['pointerup', 'pointermove', 'pointercancel'].forEach(ev => appClone.addEventListener(ev, () => clearTimeout(ltRow)));
 
   // Start engine when DOM is ready
   if (document.readyState === 'loading') {
