@@ -36,6 +36,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
@@ -95,6 +96,54 @@ public class MainActivity extends BridgeActivity {
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .build();
+
+    private String activeNativePackage = null;
+    private String activeNativeAppName = null;
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // Hide overlay whenever user is viewing Rambox directly
+        hideFloatingIsland();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // Show overlay over external app if native package is active
+        if (activeNativePackage != null && !activeNativePackage.isEmpty()) {
+            showFloatingIsland(activeNativeAppName, activeNativePackage);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent == null) return;
+        if ("ACTION_NAVIGATE_APP".equals(intent.getAction())) {
+            String direction = intent.getStringExtra("DIRECTION");
+            if (direction != null) {
+                runOnUiThread(() -> {
+                    try {
+                        WebView wv = getBridge().getWebView();
+                        if (wv != null) {
+                            wv.evaluateJavascript(
+                                "window.dispatchEvent(new CustomEvent('floating-island-nav', { detail: { direction: '" + direction + "' } }));",
+                                null
+                            );
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error evaluating JS navigation", e);
+                    }
+                });
+            }
+        }
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -246,21 +295,31 @@ public class MainActivity extends BridgeActivity {
      * Direct Native Launcher Bridge:
      * - Launches installed Play Store applications directly with FLAG_ACTIVITY_NEW_TASK.
      * - Checks package installation state for 49 catalog apps.
+     * - Spawns identical Dynamic Island capsule over external native apps.
      */
     public class RamboxNativeBridge {
         @JavascriptInterface
-        public boolean launchPackage(String packageName, String fallbackUrl) {
+        public boolean launchPackage(String packageName, String appName, String fallbackUrl) {
             if (packageName == null || packageName.trim().isEmpty()) {
                 return false;
             }
             runOnUiThread(() -> {
                 try {
+                    activeNativePackage = packageName.trim();
+                    activeNativeAppName = (appName != null && !appName.trim().isEmpty()) ? appName.trim() : "App";
+
                     PackageManager pm = getPackageManager();
-                    Intent intent = pm.getLaunchIntentForPackage(packageName.trim());
+                    Intent intent = pm.getLaunchIntentForPackage(activeNativePackage);
                     if (intent != null) {
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(intent);
                         Log.d(TAG, "Direct native launch succeeded for: " + packageName);
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(MainActivity.this)) {
+                            showFloatingIsland(activeNativeAppName, activeNativePackage);
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            requestOverlayPermission();
+                        }
                     } else if (fallbackUrl != null && !fallbackUrl.trim().isEmpty()) {
                         Intent viewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl.trim()));
                         viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -271,6 +330,11 @@ public class MainActivity extends BridgeActivity {
                 }
             });
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean launchPackage(String packageName, String fallbackUrl) {
+            return launchPackage(packageName, "App", fallbackUrl);
         }
 
         @JavascriptInterface
@@ -290,24 +354,79 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean canDrawOverlays() {
-            return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                return Settings.canDrawOverlays(MainActivity.this);
+            }
+            return true;
         }
 
         @JavascriptInterface
         public void requestOverlayPermission() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(MainActivity.this)) {
+                try {
+                    Toast.makeText(
+                        MainActivity.this,
+                        "Aktifkan izin 'Tampilkan di atas aplikasi lain' agar Dynamic Island muncul di atas WhatsApp",
+                        Toast.LENGTH_LONG
+                    ).show();
+                    Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())
+                    );
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error requesting overlay permission", e);
+                }
+            }
         }
 
         @JavascriptInterface
-        public void startFloatingIsland() {
+        public void startFloatingIsland(String appName, String packageName) {
+            showFloatingIsland(appName, packageName);
         }
 
         @JavascriptInterface
         public void stopFloatingIsland() {
+            hideFloatingIsland();
         }
 
         @JavascriptInterface
         public boolean isFloatingIslandRunning() {
-            return false;
+            return true;
+        }
+    }
+
+    public void showFloatingIsland(String appName, String packageName) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            return;
+        }
+        try {
+            Intent intent = new Intent(this, FloatingIslandService.class);
+            intent.setAction(FloatingIslandService.ACTION_SHOW);
+            intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, appName);
+            intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, packageName);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting FloatingIslandService", e);
+        }
+    }
+
+    public void hideFloatingIsland() {
+        try {
+            Intent intent = new Intent(this, FloatingIslandService.class);
+            intent.setAction(FloatingIslandService.ACTION_HIDE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error hiding FloatingIslandService", e);
         }
     }
 

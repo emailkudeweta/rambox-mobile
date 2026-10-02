@@ -46,6 +46,27 @@ export default function DynamicIsland({
     }
   }, []);
 
+  // Listen for navigation events from the system overlay Dynamic Island
+  useEffect(() => {
+    const handleFloatingNav = (e) => {
+      const direction = e.detail?.direction;
+      if (direction === 'next') {
+        const nextIdx = (activeIndex + 1) % apps.length;
+        const targetApp = apps[nextIdx];
+        setActiveAppId(targetApp.id);
+        launchAppDirectly(targetApp);
+      } else if (direction === 'prev') {
+        const prevIdx = (activeIndex - 1 + apps.length) % apps.length;
+        const targetApp = apps[prevIdx];
+        setActiveAppId(targetApp.id);
+        launchAppDirectly(targetApp);
+      }
+    };
+
+    window.addEventListener('floating-island-nav', handleFloatingNav);
+    return () => window.removeEventListener('floating-island-nav', handleFloatingNav);
+  }, [activeIndex, apps]);
+
   const handleNextApp = (e) => {
     e.stopPropagation();
     const nextIdx = (activeIndex + 1) % apps.length;

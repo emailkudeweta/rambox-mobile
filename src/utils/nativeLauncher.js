@@ -40,7 +40,7 @@ export function launchAppDirectly(app) {
   const pkg = getInstalledPackage(app);
   if (pkg && window.RamboxNative) {
     try {
-      window.RamboxNative.launchPackage(pkg, app.url || '');
+      window.RamboxNative.launchPackage(pkg, app.name || '', app.url || '');
       return true;
     } catch (e) {
       console.error('launchAppDirectly error for', app.name, e);
