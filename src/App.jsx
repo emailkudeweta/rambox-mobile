@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { DEFAULT_SERVICES } from './config/constants';
+import { AVAILABLE_SERVICES } from './config/services';
 import MobileWebview from './components/MobileWebview';
 import ServicesModal from './components/ServicesModal';
 import SettingsModal, { DEFAULT_PREFERENCES } from './components/SettingsModal';
@@ -22,21 +23,22 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         return parsed.map(app => {
-          const defaultMatch = DEFAULT_SERVICES.find(d => d.id === app.id);
-          if (defaultMatch) {
+          const match = DEFAULT_SERVICES.find(d => d.id === app.id) || 
+                        AVAILABLE_SERVICES.find(s => s.name.toLowerCase() === app.name.toLowerCase() || s.id === app.id);
+          if (match) {
             return {
               ...app,
-              url: app.id === 'app-whatsapp' ? defaultMatch.url : (app.url || defaultMatch.url),
-              isNativeLauncher: !!defaultMatch.isNativeLauncher,
-              packageName: defaultMatch.packageName,
-              fallbackPackageNames: defaultMatch.fallbackPackageNames
+              url: app.url || match.url,
+              packageName: match.packageName,
+              fallbackPackageNames: match.fallbackPackageNames
             };
           }
           if (app.name === 'WhatsApp' || (app.url && app.url.includes('whatsapp'))) {
             return {
               ...app,
               url: 'https://web.whatsapp.com',
-              isNativeLauncher: false
+              packageName: 'com.whatsapp',
+              fallbackPackageNames: ['com.whatsapp.w4b']
             };
           }
           return app;

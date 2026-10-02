@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import ChromeMobileBrowser from './ChromeMobileBrowser';
 import NativeAppLauncherPanel from './NativeAppLauncherPanel';
 import { RotateCw, AlertTriangle, ChevronLeft, ChevronRight, Compass, Trash2, LogIn } from 'lucide-react';
@@ -8,10 +8,49 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isNavPillExpanded, setIsNavPillExpanded] = useState(false);
-  const [forceWebView, setForceWebView] = useState(false);
+  const [userChoseWebView, setUserChoseWebView] = useState(false);
+  const autoLaunchRef = useRef(false);
 
   // Keep URL clean without unsupported query parameters
   const serviceUrl = app.url || 'about:blank';
+
+  // Check if native app is installed on the device
+  const installedPackage = useMemo(() => {
+    if (!window.RamboxNative || !app.packageName) return null;
+    try {
+      if (window.RamboxNative.isPackageInstalled(app.packageName)) {
+        return app.packageName;
+      }
+      if (Array.isArray(app.fallbackPackageNames)) {
+        for (const pkg of app.fallbackPackageNames) {
+          if (window.RamboxNative.isPackageInstalled(pkg)) {
+            return pkg;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('isPackageInstalled error', e);
+    }
+    return null;
+  }, [app.packageName, app.fallbackPackageNames]);
+
+  const isNativeInstalled = Boolean(installedPackage);
+
+  // Auto-launch native app when active and installed on device
+  useEffect(() => {
+    if (isActive && isNativeInstalled && !userChoseWebView) {
+      if (!autoLaunchRef.current) {
+        autoLaunchRef.current = true;
+        try {
+          window.RamboxNative.launchPackage(installedPackage, app.url);
+        } catch (e) {
+          console.error('Error auto-launching native package', e);
+        }
+      }
+    } else if (!isActive) {
+      autoLaunchRef.current = false;
+    }
+  }, [isActive, isNativeInstalled, installedPackage, userChoseWebView, app.url]);
 
   const handleGoBack = () => {
     if (iframeRef.current?.contentWindow) {
@@ -69,12 +108,13 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
     return () => window.removeEventListener('mobile-webview-action', handleWebviewAction);
   }, [app.id, serviceUrl]);
 
-  if (app.isNativeLauncher && !forceWebView) {
+  if (isNativeInstalled && !userChoseWebView) {
     return (
       <NativeAppLauncherPanel 
         app={app} 
+        installedPackage={installedPackage}
         isActive={isActive} 
-        onFallbackToWeb={() => setForceWebView(true)} 
+        onFallbackToWeb={() => setUserChoseWebView(true)} 
       />
     );
   }

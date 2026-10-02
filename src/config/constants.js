@@ -6,7 +6,6 @@ export const DEFAULT_SERVICES = [
     category: 'Messaging',
     iconPath: './Icon/whatsapp.ico',
     color: '#22c55e',
-    isNativeLauncher: false,
     packageName: 'com.whatsapp',
     fallbackPackageNames: ['com.whatsapp.w4b']
   },
@@ -25,7 +24,9 @@ export const DEFAULT_SERVICES = [
     url: 'https://web.telegram.org/a/', 
     category: 'Messaging',
     iconPath: './Icon/telegram.ico',
-    color: '#0ea5e9'
+    color: '#0ea5e9',
+    packageName: 'org.telegram.messenger',
+    fallbackPackageNames: ['org.thunderdog.challegram']
   },
   { 
     id: 'app-discord', 
@@ -33,7 +34,8 @@ export const DEFAULT_SERVICES = [
     url: 'https://discord.com/app', 
     category: 'Social',
     iconPath: './Icon/discord.ico',
-    color: '#8b5cf6'
+    color: '#8b5cf6',
+    packageName: 'com.discord'
   },
   { 
     id: 'app-youtube', 
@@ -42,7 +44,6 @@ export const DEFAULT_SERVICES = [
     category: 'Media',
     iconPath: './Icon/youtube.ico',
     color: '#ef4444',
-    isNativeLauncher: true,
     packageName: 'com.google.android.youtube'
   }
 ];

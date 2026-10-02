@@ -270,9 +270,13 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean isPackageInstalled(String packageName) {
+            if (packageName == null || packageName.trim().isEmpty()) return false;
             try {
                 PackageManager pm = getPackageManager();
-                pm.getPackageInfo(packageName, PackageManager.GET_ACTIVITIES);
+                if (pm.getLaunchIntentForPackage(packageName.trim()) != null) {
+                    return true;
+                }
+                pm.getPackageInfo(packageName.trim(), 0);
                 return true;
             } catch (Exception e) {
                 return false;

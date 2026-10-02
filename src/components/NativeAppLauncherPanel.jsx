@@ -1,41 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Layers, Sparkles, AlertCircle, CheckCircle2, Play, Globe, Shield } from 'lucide-react';
+import { ExternalLink, Sparkles, CheckCircle2, Globe, Shield, RotateCw } from 'lucide-react';
 
-export default function NativeAppLauncherPanel({ app, isActive, onFallbackToWeb }) {
-  const [isInstalled, setIsInstalled] = useState(true);
+export default function NativeAppLauncherPanel({ app, installedPackage, isActive, onFallbackToWeb }) {
   const [canOverlay, setCanOverlay] = useState(false);
   const [isOverlayActive, setIsOverlayActive] = useState(false);
-  const [hasAutoLaunched, setHasAutoLaunched] = useState(false);
 
-  // Check package status & overlay permissions
+  const targetPackage = installedPackage || app.packageName;
+
+  // Check overlay permissions
   useEffect(() => {
     if (window.RamboxNative) {
       try {
-        const installed = window.RamboxNative.isPackageInstalled(app.packageName);
-        setIsInstalled(installed);
         setCanOverlay(window.RamboxNative.canDrawOverlays());
         setIsOverlayActive(window.RamboxNative.isFloatingIslandRunning());
       } catch (e) {
         console.warn('Native bridge check error', e);
       }
     }
-  }, [app.packageName]);
+  }, []);
 
   // Launch the native Android app
   const handleLaunch = () => {
-    if (window.RamboxNative) {
+    if (window.RamboxNative && targetPackage) {
       try {
-        window.RamboxNative.launchPackage(app.packageName, app.url);
+        window.RamboxNative.launchPackage(targetPackage, app.url);
       } catch (e) {
         console.error('Error launching package via bridge', e);
       }
-    } else {
-      // Fallback intent for browser testing
-      window.location.href = `intent:#Intent;package=${app.packageName};end`;
+    } else if (targetPackage) {
+      window.location.href = `intent:#Intent;package=${targetPackage};end`;
     }
   };
-
-  // Native app is launched only when user clicks the launch button
 
   // Request overlay permission or toggle floating island
   const handleToggleOverlay = () => {
@@ -79,13 +74,14 @@ export default function NativeAppLauncherPanel({ app, isActive, onFallbackToWeb 
       {/* 2. Title & Status */}
       <h2 className="text-2xl font-black tracking-tight text-white mb-1.5 flex items-center justify-center space-x-2">
         <span>{app.name}</span>
-        <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-white/10 text-white/80 border border-white/10">
-          Native APK
+        <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1">
+          <CheckCircle2 size={12} />
+          <span>Aplikasi Terbuka</span>
         </span>
       </h2>
 
       <p className="text-xs text-white/60 max-w-xs mb-6 leading-relaxed">
-        Layanan ini terhubung langsung ke aplikasi {app.name} asli di perangkat Anda tanpa beban webview.
+        Aplikasi resmi {app.name} telah dibuka di ponsel Anda. Dynamic Island mengapung di layar agar Anda dapat kembali ke Rambox kapan saja.
       </p>
 
       {/* 3. Primary Action Button */}
@@ -99,15 +95,8 @@ export default function NativeAppLauncherPanel({ app, isActive, onFallbackToWeb 
           }}
         >
           <ExternalLink size={18} />
-          <span>Buka Aplikasi {app.name}</span>
+          <span>Buka Ulang Aplikasi {app.name}</span>
         </button>
-
-        {!isInstalled && (
-          <div className="flex items-center justify-center space-x-1.5 text-xs text-amber-400 bg-amber-400/10 py-2 px-3 rounded-xl border border-amber-400/20">
-            <AlertCircle size={14} />
-            <span>Aplikasi belum terdeteksi. Silakan pasang dari Play Store.</span>
-          </div>
-        )}
       </div>
 
       {/* 4. Floating Dynamic Island Shortcut Card */}
@@ -129,7 +118,7 @@ export default function NativeAppLauncherPanel({ app, isActive, onFallbackToWeb 
         </div>
 
         <p className="text-[11px] text-white/50 mb-3 leading-normal">
-          Tampilkan pil mengapung di layar saat membuka {app.name} agar Anda dapat kembali ke Rambox dengan satu sentuhan.
+          Pil mengapung memudahkan Anda kembali ke Rambox atau berganti layanan langsung dari atas aplikasi {app.name}.
         </p>
 
         <button
@@ -151,10 +140,10 @@ export default function NativeAppLauncherPanel({ app, isActive, onFallbackToWeb 
       {onFallbackToWeb && (
         <button
           onClick={onFallbackToWeb}
-          className="mt-6 text-xs text-white/40 hover:text-white/70 flex items-center space-x-1 transition-colors"
+          className="mt-6 text-xs text-white/50 hover:text-white flex items-center space-x-1.5 transition-colors py-2 px-3 rounded-xl bg-white/5 border border-white/10"
         >
           <Globe size={13} />
-          <span>Buka versi web sementara</span>
+          <span>Gunakan Versi Web di Rambox</span>
         </button>
       )}
 

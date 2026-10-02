@@ -117,7 +117,9 @@ export default function ServicesModal({ isOpen, onClose, apps, onAddApp, onRemov
                       />
                       <div className="min-w-0">
                         <p className="font-bold text-xs text-white truncate">{srv.name}</p>
-                        <p className="text-[10px] text-white/40 truncate">{srv.category}</p>
+                        <p className="text-[10px] text-white/40 truncate">
+                          {srv.category}{srv.packageName ? ' • Native App' : ''}
+                        </p>
                       </div>
                     </div>
 
@@ -142,7 +144,9 @@ export default function ServicesModal({ isOpen, onClose, apps, onAddApp, onRemov
                             url: srv.url,
                             iconPath: srv.iconPath,
                             category: srv.category,
-                            isBrowser: Boolean(srv.isBrowser)
+                            isBrowser: Boolean(srv.isBrowser),
+                            packageName: srv.packageName,
+                            fallbackPackageNames: srv.fallbackPackageNames
                           });
                           onClose();
                         }}
