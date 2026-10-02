@@ -32,6 +32,13 @@ export default function App() {
               fallbackPackageNames: defaultMatch.fallbackPackageNames
             };
           }
+          if (app.name === 'WhatsApp' || (app.url && app.url.includes('whatsapp'))) {
+            return {
+              ...app,
+              url: 'https://web.whatsapp.com',
+              isNativeLauncher: false
+            };
+          }
           return app;
         });
       }

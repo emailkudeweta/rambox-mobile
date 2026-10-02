@@ -2,7 +2,7 @@ export const DEFAULT_SERVICES = [
   { 
     id: 'app-whatsapp', 
     name: 'WhatsApp', 
-    url: './whatsapp/index.html', 
+    url: 'https://web.whatsapp.com', 
     category: 'Messaging',
     iconPath: './Icon/whatsapp.ico',
     color: '#22c55e',

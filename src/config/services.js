@@ -28,7 +28,7 @@ export const AVAILABLE_SERVICES = [
   { id: 'srv-24', name: 'Vimeo', category: 'Media', url: 'https://vimeo.com', iconPath: `${ICON_DIR}/vimeo.ico` },
   { id: 'srv-25', name: 'VK', category: 'Social', url: 'https://m.vk.com', iconPath: `${ICON_DIR}/vk.ico` },
   { id: 'srv-26', name: 'WeChat', category: 'Messaging', url: 'https://web.wechat.com', iconPath: `${ICON_DIR}/wechat.ico` },
-  { id: 'srv-27', name: 'WhatsApp', category: 'Messaging', url: 'https://web.whatsapp.com', iconPath: `${ICON_DIR}/whatsapp.ico`, isNativeLauncher: true, packageName: 'com.whatsapp' },
+  { id: 'srv-27', name: 'WhatsApp', category: 'Messaging', url: 'https://web.whatsapp.com', iconPath: `${ICON_DIR}/whatsapp.ico`, isNativeLauncher: false, packageName: 'com.whatsapp' },
   { id: 'srv-28', name: 'Wikipedia', category: 'Productivity', url: 'https://m.wikipedia.org', iconPath: `${ICON_DIR}/wikipedia.ico` },
   { id: 'srv-29', name: 'WordPress', category: 'Development', url: 'https://wordpress.com', iconPath: `${ICON_DIR}/wordpress.ico` },
   { id: 'srv-30', name: 'X', category: 'Social', url: 'https://x.com', iconPath: `${ICON_DIR}/x.ico` },
