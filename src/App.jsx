@@ -7,6 +7,7 @@ import ServicesModal from './components/ServicesModal';
 import SettingsModal, { DEFAULT_PREFERENCES } from './components/SettingsModal';
 import AutoUpdaterModal from './components/AutoUpdaterModal';
 import DynamicIsland from './ui/DynamicIsland';
+import { launchAppDirectly } from './utils/nativeLauncher';
 
 export default function App() {
   const [preferences, setPreferences] = useState(() => {
@@ -142,6 +143,7 @@ export default function App() {
   const handleAddApp = (newApp) => {
     setApps(prev => [...prev, newApp]);
     setActiveAppId(newApp.id);
+    launchAppDirectly(newApp);
   };
 
   const handleRemoveApp = (appId) => {

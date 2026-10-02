@@ -3,6 +3,7 @@ import {
   Plus, ChevronLeft, ChevronRight, X, Trash2, RotateCw, 
   Sparkles, Settings, GripHorizontal, Move 
 } from 'lucide-react';
+import { isAppNativelyInstalled, launchAppDirectly } from '../utils/nativeLauncher';
 
 export default function DynamicIsland({ 
   apps, activeAppId, setActiveAppId, onRemoveApp,
@@ -48,13 +49,17 @@ export default function DynamicIsland({
   const handleNextApp = (e) => {
     e.stopPropagation();
     const nextIdx = (activeIndex + 1) % apps.length;
-    setActiveAppId(apps[nextIdx].id);
+    const targetApp = apps[nextIdx];
+    setActiveAppId(targetApp.id);
+    launchAppDirectly(targetApp);
   };
 
   const handlePrevApp = (e) => {
     e.stopPropagation();
     const prevIdx = (activeIndex - 1 + apps.length) % apps.length;
-    setActiveAppId(apps[prevIdx].id);
+    const targetApp = apps[prevIdx];
+    setActiveAppId(targetApp.id);
+    launchAppDirectly(targetApp);
   };
 
   const resetPosition = (e) => {
@@ -190,7 +195,18 @@ export default function DynamicIsland({
               </button>
 
               {/* Active Service Badge & Name */}
-              <div className="flex items-center space-x-2 min-w-0 flex-1 justify-center px-1">
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isAppNativelyInstalled(activeApp)) {
+                    launchAppDirectly(activeApp);
+                  } else {
+                    setIsExpanded(true);
+                  }
+                }}
+                className="flex items-center space-x-2 min-w-0 flex-1 justify-center px-1 cursor-pointer active:scale-95 transition-transform"
+                title={isAppNativelyInstalled(activeApp) ? `Buka aplikasi ${activeApp?.name}` : activeApp?.name}
+              >
                 <div 
                   className="w-6 h-6 rounded-lg flex items-center justify-center p-0.5 shrink-0 shadow-sm"
                   style={{ backgroundColor: activeApp?.color ? `${activeApp.color}25` : 'rgba(255,255,255,0.15)' }}
@@ -289,6 +305,7 @@ export default function DynamicIsland({
                         e.stopPropagation();
                         setActiveAppId(app.id);
                         setIsExpanded(false);
+                        launchAppDirectly(app);
                       }}
                       className={`flex items-center justify-between p-2.5 rounded-2xl border transition-all cursor-pointer ${
                         isActive 

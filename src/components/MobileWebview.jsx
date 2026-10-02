@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import ChromeMobileBrowser from './ChromeMobileBrowser';
-import NativeAppLauncherPanel from './NativeAppLauncherPanel';
-import { RotateCw, AlertTriangle, ChevronLeft, ChevronRight, Compass, Trash2, LogIn } from 'lucide-react';
+import { RotateCw, AlertTriangle, ChevronLeft, ChevronRight, Compass, Trash2, LogIn, ExternalLink } from 'lucide-react';
+import { isAppNativelyInstalled, launchAppDirectly } from '../utils/nativeLauncher';
 
 export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }) {
   const iframeRef = useRef(null);
@@ -15,42 +15,19 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
   const serviceUrl = app.url || 'about:blank';
 
   // Check if native app is installed on the device
-  const installedPackage = useMemo(() => {
-    if (!window.RamboxNative || !app.packageName) return null;
-    try {
-      if (window.RamboxNative.isPackageInstalled(app.packageName)) {
-        return app.packageName;
-      }
-      if (Array.isArray(app.fallbackPackageNames)) {
-        for (const pkg of app.fallbackPackageNames) {
-          if (window.RamboxNative.isPackageInstalled(pkg)) {
-            return pkg;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('isPackageInstalled error', e);
-    }
-    return null;
-  }, [app.packageName, app.fallbackPackageNames]);
+  const isNativeInstalled = isAppNativelyInstalled(app);
 
-  const isNativeInstalled = Boolean(installedPackage);
-
-  // Auto-launch native app when active and installed on device
+  // Auto-launch native app directly when active and installed on device
   useEffect(() => {
     if (isActive && isNativeInstalled && !userChoseWebView) {
       if (!autoLaunchRef.current) {
         autoLaunchRef.current = true;
-        try {
-          window.RamboxNative.launchPackage(installedPackage, app.url);
-        } catch (e) {
-          console.error('Error auto-launching native package', e);
-        }
+        launchAppDirectly(app);
       }
     } else if (!isActive) {
       autoLaunchRef.current = false;
     }
-  }, [isActive, isNativeInstalled, installedPackage, userChoseWebView, app.url]);
+  }, [isActive, isNativeInstalled, userChoseWebView, app]);
 
   const handleGoBack = () => {
     if (iframeRef.current?.contentWindow) {
@@ -108,14 +85,59 @@ export default function MobileWebview({ app, isActive, isDarkMode, onRemoveApp }
     return () => window.removeEventListener('mobile-webview-action', handleWebviewAction);
   }, [app.id, serviceUrl]);
 
+  // If installed natively and user has not explicitly requested webview, show clean 1-tap launcher
   if (isNativeInstalled && !userChoseWebView) {
     return (
-      <NativeAppLauncherPanel 
-        app={app} 
-        installedPackage={installedPackage}
-        isActive={isActive} 
-        onFallbackToWeb={() => setUserChoseWebView(true)} 
-      />
+      <div 
+        onClick={() => launchAppDirectly(app)}
+        className="w-full h-full flex flex-col items-center justify-center p-6 text-center select-none bg-gradient-to-b from-[#0f0f18] via-[#0c0c14] to-black cursor-pointer"
+      >
+        {/* App Icon with subtle glow */}
+        <div className="relative mb-6">
+          <div 
+            className="absolute inset-0 rounded-3xl blur-2xl opacity-30 animate-pulse"
+            style={{ backgroundColor: app.color || '#3b82f6' }}
+          />
+          <div 
+            className="relative w-24 h-24 rounded-3xl flex items-center justify-center p-4 border border-white/15 shadow-2xl backdrop-blur-xl"
+            style={{ backgroundColor: `${app.color || '#3b82f6'}20` }}
+          >
+            <img 
+              src={app.iconPath} 
+              alt={app.name} 
+              className="w-14 h-14 object-contain filter drop-shadow-lg"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+        </div>
+
+        {/* Clean Direct Launch Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            launchAppDirectly(app);
+          }}
+          className="py-3 px-6 rounded-2xl font-bold text-sm text-white flex items-center justify-center space-x-2 shadow-xl active:scale-95 transition-all"
+          style={{ 
+            backgroundColor: app.color || '#22c55e',
+            boxShadow: `0 8px 24px ${app.color || '#22c55e'}40`
+          }}
+        >
+          <ExternalLink size={16} />
+          <span>Buka Aplikasi {app.name}</span>
+        </button>
+
+        {/* Subtle Web Alternative */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setUserChoseWebView(true);
+          }}
+          className="mt-6 text-xs text-white/40 hover:text-white/80 transition-colors py-1.5 px-3 rounded-lg hover:bg-white/5"
+        >
+          Gunakan versi web
+        </button>
+      </div>
     );
   }
 

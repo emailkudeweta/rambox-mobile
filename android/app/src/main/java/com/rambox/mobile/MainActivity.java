@@ -243,21 +243,26 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Solusi 2: Direct Native Launcher Bridge & Floating Dynamic Island Controller
+     * Direct Native Launcher Bridge:
+     * - Launches installed Play Store applications directly with FLAG_ACTIVITY_NEW_TASK.
+     * - Checks package installation state for 49 catalog apps.
      */
     public class RamboxNativeBridge {
         @JavascriptInterface
         public boolean launchPackage(String packageName, String fallbackUrl) {
+            if (packageName == null || packageName.trim().isEmpty()) {
+                return false;
+            }
             runOnUiThread(() -> {
                 try {
                     PackageManager pm = getPackageManager();
-                    Intent intent = pm.getLaunchIntentForPackage(packageName);
+                    Intent intent = pm.getLaunchIntentForPackage(packageName.trim());
                     if (intent != null) {
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(intent);
-                        startFloatingOverlay();
-                    } else if (fallbackUrl != null && !fallbackUrl.isEmpty()) {
-                        Intent viewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl));
+                        Log.d(TAG, "Direct native launch succeeded for: " + packageName);
+                    } else if (fallbackUrl != null && !fallbackUrl.trim().isEmpty()) {
+                        Intent viewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl.trim()));
                         viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(viewIntent);
                     }
@@ -285,64 +290,24 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean canDrawOverlays() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                return Settings.canDrawOverlays(MainActivity.this);
-            }
-            return true;
+            return false;
         }
 
         @JavascriptInterface
         public void requestOverlayPermission() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(MainActivity.this)) {
-                Intent intent = new Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())
-                );
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
-            }
         }
 
         @JavascriptInterface
         public void startFloatingIsland() {
-            runOnUiThread(() -> startFloatingOverlay());
         }
 
         @JavascriptInterface
         public void stopFloatingIsland() {
-            runOnUiThread(() -> stopFloatingOverlay());
         }
 
         @JavascriptInterface
         public boolean isFloatingIslandRunning() {
-            return FloatingIslandService.isRunning;
-        }
-    }
-
-    public void startFloatingOverlay() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                return;
-            }
-        }
-        try {
-            Intent serviceIntent = new Intent(this, FloatingIslandService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error starting FloatingIslandService", e);
-        }
-    }
-
-    public void stopFloatingOverlay() {
-        try {
-            Intent serviceIntent = new Intent(this, FloatingIslandService.class);
-            stopService(serviceIntent);
-        } catch (Exception e) {
-            Log.e(TAG, "Error stopping FloatingIslandService", e);
+            return false;
         }
     }
 

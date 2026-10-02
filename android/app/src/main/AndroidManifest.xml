@@ -36,12 +36,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
-
-        <service
-            android:name=".FloatingIslandService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
     </application>
 
     <!-- Essential & Advanced Permissions -->
