@@ -864,6 +864,7 @@ public class MainActivity extends BridgeActivity {
                         injection.append("<script id=\"rb-wa-stealth\">\n")
                             .append("try {\n")
                             .append("  window.__rb_parent = window.parent;\n")
+                            .append("  Object.defineProperty(window, 'top', { get: function() { return window.self; }, configurable: true });\n")
                             .append("  Object.defineProperty(navigator, 'platform', { get: function() { return 'Win32'; }, configurable: true });\n")
                             .append("  Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 1; }, configurable: true });\n")
                             .append("  if (navigator.userAgentData) {\n")
