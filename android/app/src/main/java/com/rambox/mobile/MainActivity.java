@@ -19,6 +19,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Environment;
+import android.os.PowerManager;
+import android.content.SharedPreferences;
 import android.provider.Settings;
 import android.content.pm.PackageManager;
 import android.webkit.JavascriptInterface;
@@ -110,9 +112,29 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
-        // Show overlay over external app if native package is active
-        if (activeNativePackage != null && !activeNativePackage.isEmpty()) {
-            showFloatingIsland(activeNativeAppName, activeNativePackage);
+        // Keep Rambox alive in background when minimized or switching apps!
+        startBackgroundPersistence();
+    }
+
+    public void startBackgroundPersistence() {
+        try {
+            Intent intent = new Intent(this, FloatingIslandService.class);
+            if (activeNativePackage != null && !activeNativePackage.isEmpty()) {
+                intent.setAction(FloatingIslandService.ACTION_SHOW);
+                intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, activeNativeAppName);
+                intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, activeNativePackage);
+            } else {
+                intent.setAction(FloatingIslandService.ACTION_KEEP_ALIVE);
+                intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, "Rambox");
+                intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, "");
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting background persistence", e);
         }
     }
 
@@ -394,6 +416,53 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean isFloatingIslandRunning() {
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean isBatteryOptimizationIgnored() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                return pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+            return true;
+        }
+
+        @JavascriptInterface
+        public void requestIgnoreBatteryOptimization() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                    if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    } else {
+                        Toast.makeText(MainActivity.this, "Mode Latar Belakang Tanpa Batas sudah aktif!", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    } catch (Exception ex) {
+                        Log.e(TAG, "Error opening battery optimization settings", ex);
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void setAutoStartEnabled(boolean enabled) {
+            SharedPreferences prefs = getSharedPreferences("rambox_preferences", MODE_PRIVATE);
+            prefs.edit().putBoolean("autoStart", enabled).apply();
+            Log.d(TAG, "AutoStart preference updated to: " + enabled);
+        }
+
+        @JavascriptInterface
+        public boolean isAutoStartEnabled() {
+            SharedPreferences prefs = getSharedPreferences("rambox_preferences", MODE_PRIVATE);
+            return prefs.getBoolean("autoStart", true);
         }
     }
 

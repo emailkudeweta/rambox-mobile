@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Settings, X, ShieldAlert, Trash2, CheckCircle2, Loader2, 
   VolumeX, Volume2, Globe, Monitor, Moon, Sun, Smartphone, 
-  ShieldCheck, RefreshCw, Sparkles, ExternalLink, Sliders, LogIn
+  ShieldCheck, RefreshCw, Sparkles, ExternalLink, Sliders, LogIn, Zap
 } from 'lucide-react';
 import { CURRENT_APP_VERSION } from './AutoUpdaterModal';
 
@@ -30,6 +30,26 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'appearance' | 'privacy' | 'data' | 'about'
   const [isClearing, setIsClearing] = useState(false);
   const [clearSuccess, setClearSuccess] = useState(false);
+  const [isBatteryIgnored, setIsBatteryIgnored] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && window.RamboxNative && window.RamboxNative.isBatteryOptimizationIgnored) {
+      try {
+        setIsBatteryIgnored(window.RamboxNative.isBatteryOptimizationIgnored());
+      } catch (e) {}
+    }
+  }, [isOpen, activeTab]);
+
+  const handleRequestBatteryOptimization = () => {
+    if (window.RamboxNative && window.RamboxNative.requestIgnoreBatteryOptimization) {
+      window.RamboxNative.requestIgnoreBatteryOptimization();
+      setTimeout(() => {
+        if (window.RamboxNative?.isBatteryOptimizationIgnored) {
+          setIsBatteryIgnored(window.RamboxNative.isBatteryOptimizationIgnored());
+        }
+      }, 1500);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && preferences) {
@@ -181,6 +201,36 @@ export default function SettingsModal({
                     className="w-4 h-4 accent-indigo-600 rounded"
                   />
                 </label>
+
+                {/* BATTERY BACKGROUND OPTIMIZATION CARD */}
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400">
+                        <Zap size={15} />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-xs">Latar Belakang Tanpa Batas</div>
+                        <div className="text-[10px] text-white/50">
+                          {isBatteryIgnored ? '✓ Penghemat baterai dinonaktifkan (Aktif)' : 'Bebaskan dari pembatasan baterai'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRequestBatteryOptimization}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] shadow-md transition-all active:scale-95 ${
+                        isBatteryIgnored
+                          ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/40'
+                          : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/20'
+                      }`}
+                    >
+                      {isBatteryIgnored ? 'Sudah Bebas' : 'Bebaskan'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/60 leading-tight">
+                    Penting: Izinkan Rambox berjalan tanpa pembatasan baterai agar pesan & floating island tetap aktif saat aplikasi diminimize, ditutup, atau HP direstart.
+                  </p>
+                </div>
 
                 {/* GOOGLE ACCOUNT AUTHENTICATION */}
                 <div className="p-3.5 rounded-2xl bg-indigo-600/10 border border-indigo-500/25 space-y-2.5">

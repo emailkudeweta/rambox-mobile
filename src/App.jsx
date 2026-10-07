@@ -80,7 +80,21 @@ export default function App() {
   const handleSavePreferences = (newPrefs) => {
     setPreferences(newPrefs);
     localStorage.setItem('rambox_preferences', JSON.stringify(newPrefs));
+    if (window.RamboxNative && window.RamboxNative.setAutoStartEnabled) {
+      try {
+        window.RamboxNative.setAutoStartEnabled(newPrefs.autoStart !== false);
+      } catch (e) {}
+    }
   };
+
+  // Sync autoStart to Native Android SharedPreferences for BootReceiver
+  useEffect(() => {
+    if (window.RamboxNative && window.RamboxNative.setAutoStartEnabled) {
+      try {
+        window.RamboxNative.setAutoStartEnabled(preferences.autoStart !== false);
+      } catch (e) {}
+    }
+  }, [preferences.autoStart]);
 
   // Screen Wake Lock (Keep Screen On preference)
   useEffect(() => {

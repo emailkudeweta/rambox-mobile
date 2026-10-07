@@ -1,5 +1,6 @@
 package com.rambox.mobile;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -17,6 +18,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -37,6 +39,7 @@ public class FloatingIslandService extends Service {
 
     public static final String ACTION_SHOW = "com.rambox.mobile.ACTION_SHOW_ISLAND";
     public static final String ACTION_HIDE = "com.rambox.mobile.ACTION_HIDE_ISLAND";
+    public static final String ACTION_KEEP_ALIVE = "com.rambox.mobile.ACTION_KEEP_ALIVE";
     public static final String EXTRA_APP_NAME = "EXTRA_APP_NAME";
     public static final String EXTRA_PACKAGE_NAME = "EXTRA_PACKAGE_NAME";
 
@@ -72,6 +75,10 @@ public class FloatingIslandService extends Service {
             String action = intent.getAction();
             if (ACTION_HIDE.equals(action)) {
                 hideFloatingView();
+                updateNotificationContent("Rambox Mobile Aktif di Latar Belakang", "Ketuk untuk membuka Rambox Workspace");
+            } else if (ACTION_KEEP_ALIVE.equals(action)) {
+                hideFloatingView();
+                updateNotificationContent("Rambox Mobile Aktif di Latar Belakang", "Ketuk untuk membuka Rambox Workspace");
             } else if (ACTION_SHOW.equals(action) || action == null) {
                 String appName = intent.getStringExtra(EXTRA_APP_NAME);
                 String packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME);
@@ -83,9 +90,41 @@ public class FloatingIslandService extends Service {
                 }
                 updateViewData();
                 showFloatingView();
+                updateNotificationContent("Dynamic Island: " + currentAppName, "Ketuk untuk kembali ke Rambox");
             }
         }
         return START_STICKY;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        Log.d(TAG, "Rambox task removed from Recents. Re-arming service to keep running in background.");
+
+        try {
+            Intent restartServiceIntent = new Intent(getApplicationContext(), FloatingIslandService.class);
+            restartServiceIntent.setPackage(getPackageName());
+            restartServiceIntent.setAction(ACTION_KEEP_ALIVE);
+
+            PendingIntent restartPendingIntent = PendingIntent.getService(
+                getApplicationContext(),
+                101,
+                restartServiceIntent,
+                PendingIntent.FLAG_ONE_SHOT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+            );
+
+            AlarmManager alarmService = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
+            if (alarmService != null) {
+                long restartTime = SystemClock.elapsedRealtime() + 1000;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmService.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, restartTime, restartPendingIntent);
+                } else {
+                    alarmService.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, restartTime, restartPendingIntent);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error scheduling service revival in onTaskRemoved", e);
+        }
     }
 
     private void createNotificationChannel() {
@@ -95,7 +134,7 @@ public class FloatingIslandService extends Service {
                 "Rambox Dynamic Island",
                 NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("Dynamic Island mengapung di atas aplikasi lain");
+            channel.setDescription("Dynamic Island & Servis Latar Belakang Rambox Mobile");
             channel.setSound(null, null);
             channel.enableVibration(false);
 
@@ -107,6 +146,16 @@ public class FloatingIslandService extends Service {
     }
 
     private void startForegroundServiceNotification() {
+        Notification notification = buildNotification("Rambox Mobile Aktif di Latar Belakang", "Ketuk untuk membuka Rambox Workspace");
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
+    }
+
+    private Notification buildNotification(String title, String content) {
         Intent openIntent = new Intent(this, MainActivity.class);
         openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         PendingIntent pendingIntent = PendingIntent.getActivity(
@@ -116,19 +165,26 @@ public class FloatingIslandService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
         );
 
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Rambox Dynamic Island Aktif")
-            .setContentText("Dynamic Island siap digunakan di atas aplikasi")
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(content)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .build();
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-        } else {
-            startForeground(NOTIFICATION_ID, notification);
+        return builder.build();
+    }
+
+    public void updateNotificationContent(String title, String content) {
+        try {
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify(NOTIFICATION_ID, buildNotification(title, content));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating notification content", e);
         }
     }
 
