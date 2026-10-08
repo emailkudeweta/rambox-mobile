@@ -204,6 +204,11 @@ export default function App() {
 
   const handleResetIslandPosition = () => {
     localStorage.removeItem('rambox_dynamic_island_pos');
+    if (window.RamboxNative && window.RamboxNative.resetIslandPosition) {
+      try {
+        window.RamboxNative.resetIslandPosition();
+      } catch (e) {}
+    }
     window.location.reload();
   };
 

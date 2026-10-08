@@ -401,6 +401,13 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void resetIslandPosition() {
+            SharedPreferences prefs = getSharedPreferences("rambox_island_overlay", MODE_PRIVATE);
+            prefs.edit().remove("manual_offset_x").remove("manual_offset_y").apply();
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Posisi Dynamic Island diatur ulang ke lubang kamera", Toast.LENGTH_SHORT).show());
+        }
+
+        @JavascriptInterface
         public boolean isBatteryOptimizationIgnored() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
