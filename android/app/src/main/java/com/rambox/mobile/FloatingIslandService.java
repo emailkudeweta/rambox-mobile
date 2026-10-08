@@ -73,6 +73,7 @@ public class FloatingIslandService extends Service {
     private LinearLayout cornerExpandedLayout;
 
     // UI Element References
+    private ImageView idleIconIv;
     private TextView centerTitleTv;
     private ImageView centerIconIv;
     private TextView cornerTitleTv;
@@ -80,6 +81,7 @@ public class FloatingIslandService extends Service {
 
     // Geometry & Camera Cutout
     private CameraPosition cameraPosition = CameraPosition.CENTER;
+    private boolean isWaterdropNotch = true; // Default true for waterdrop notch phones like Realme C25s
     private int cameraCenterX = -1;
     private int cameraCenterY = -1;
     private int cameraWidth = 0;
@@ -279,9 +281,10 @@ public class FloatingIslandService extends Service {
 
         cameraCenterX = screenWidth / 2;
         cameraCenterY = statusBarHeight / 2;
-        cameraWidth = dpToPx(28);
-        cameraHeight = dpToPx(28);
+        cameraWidth = dpToPx(32);
+        cameraHeight = dpToPx(30);
         cameraPosition = CameraPosition.CENTER;
+        isWaterdropNotch = true; // Natural default for center notch on phones like Realme C25s
 
         // Try reading window insets immediately on Android 11+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && windowManager != null) {
@@ -319,6 +322,9 @@ public class FloatingIslandService extends Service {
             cameraWidth = cameraRect.width();
             cameraHeight = cameraRect.height();
 
+            // Detect whether it's a waterdrop notch (connected to top screen edge)
+            isWaterdropNotch = (cameraRect.top <= dpToPx(6) || cameraCenterY <= dpToPx(20));
+
             if (cameraCenterX < screenWidth * 0.35f) {
                 cameraPosition = CameraPosition.LEFT;
             } else if (cameraCenterX > screenWidth * 0.65f) {
@@ -327,25 +333,34 @@ public class FloatingIslandService extends Service {
                 cameraPosition = CameraPosition.CENTER;
             }
 
-            Log.d(TAG, "Camera Cutout Detected: " + cameraPosition + " at (" + cameraCenterX + ", " + cameraCenterY + ")");
+            Log.d(TAG, "Camera Cutout Detected: " + cameraPosition + ", Notch: " + isWaterdropNotch + " at (" + cameraCenterX + ", " + cameraCenterY + ")");
         }
         updateParamsForCurrentState();
     }
 
     private int getTargetWidth() {
         if (!isExpanded) {
+            if (isWaterdropNotch && cameraPosition == CameraPosition.CENTER) {
+                return Math.max(dpToPx(104), cameraWidth + dpToPx(56));
+            }
             return (cameraPosition == CameraPosition.CENTER) 
                 ? Math.max(dpToPx(76), cameraWidth + dpToPx(36))
                 : Math.max(dpToPx(60), cameraWidth + dpToPx(24));
         } else {
-            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(268) : dpToPx(190);
+            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(272) : dpToPx(190);
         }
     }
 
     private int getTargetHeight() {
         if (!isExpanded) {
+            if (isWaterdropNotch && cameraPosition == CameraPosition.CENTER) {
+                return Math.max(dpToPx(34), cameraHeight + dpToPx(6));
+            }
             return Math.max(dpToPx(32), cameraHeight + dpToPx(10));
         } else {
+            if (isWaterdropNotch && cameraPosition == CameraPosition.CENTER) {
+                return dpToPx(42);
+            }
             return (cameraPosition == CameraPosition.CENTER) ? dpToPx(38) : dpToPx(82);
         }
     }
@@ -368,7 +383,9 @@ public class FloatingIslandService extends Service {
     private int getTargetY() {
         int h = getTargetHeight();
         int y;
-        if (!isExpanded || cameraPosition == CameraPosition.CENTER) {
+        if (isWaterdropNotch && cameraPosition == CameraPosition.CENTER) {
+            y = 0; // Seamlessly connected to the very top edge of Realme C25s!
+        } else if (!isExpanded || cameraPosition == CameraPosition.CENTER) {
             y = Math.max(dpToPx(4), cameraCenterY - h / 2);
         } else {
             // Anchor top to camera cutout and expand downward
@@ -431,7 +448,12 @@ public class FloatingIslandService extends Service {
 
         GradientDrawable capsuleBg = new GradientDrawable();
         capsuleBg.setColor(Color.parseColor("#050508"));
-        capsuleBg.setCornerRadius(dpToPx(24));
+        if (isWaterdropNotch && cameraPosition == CameraPosition.CENTER) {
+            float r = dpToPx(18);
+            capsuleBg.setCornerRadii(new float[]{0, 0, 0, 0, r, r, r, r});
+        } else {
+            capsuleBg.setCornerRadius(dpToPx(24));
+        }
         capsuleBg.setStroke(dpToPx(1f), Color.parseColor("#2a2a3e"));
         floatingView.setBackground(capsuleBg);
 
@@ -445,7 +467,12 @@ public class FloatingIslandService extends Service {
 
         GradientDrawable capsuleBg = new GradientDrawable();
         capsuleBg.setColor(Color.parseColor("#050508"));
-        capsuleBg.setCornerRadius(cameraPosition != CameraPosition.CENTER ? dpToPx(18) : dpToPx(24));
+        if (isWaterdropNotch && cameraPosition == CameraPosition.CENTER) {
+            float r = dpToPx(20);
+            capsuleBg.setCornerRadii(new float[]{0, 0, 0, 0, r, r, r, r});
+        } else {
+            capsuleBg.setCornerRadius(cameraPosition != CameraPosition.CENTER ? dpToPx(18) : dpToPx(24));
+        }
         capsuleBg.setStroke(dpToPx(1f), Color.parseColor("#2a2a3e"));
         floatingView.setBackground(capsuleBg);
 
@@ -463,7 +490,7 @@ public class FloatingIslandService extends Service {
     }
 
     // =========================================================================
-    // 1. IDLE VIEW: Minimalist Pill over Camera Punch Hole
+    // 1. IDLE VIEW: Minimalist Pill wrapping Camera Notch / Punch Hole
     // =========================================================================
     private void buildIdleLayout() {
         idleLayout = new LinearLayout(this);
@@ -474,14 +501,29 @@ public class FloatingIslandService extends Service {
             FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
-        // Pulsing emerald status dot next to camera hole
+        // Left wing: Mini Active App Icon
+        idleIconIv = new ImageView(this);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dpToPx(13), dpToPx(13));
+        iconParams.setMargins(dpToPx(6), 0, dpToPx(6), 0);
+        idleIconIv.setLayoutParams(iconParams);
+        idleIconIv.setImageDrawable(getAppIcon());
+        idleLayout.addView(idleIconIv);
+
+        // Center space for camera notch / punch hole
+        View centerGap = new View(this);
+        int gapW = Math.max(dpToPx(26), cameraWidth);
+        LinearLayout.LayoutParams gapParams = new LinearLayout.LayoutParams(gapW, dpToPx(1));
+        centerGap.setLayoutParams(gapParams);
+        idleLayout.addView(centerGap);
+
+        // Right wing: Pulsing emerald status dot
         View dotView = new View(this);
         GradientDrawable dotBg = new GradientDrawable();
         dotBg.setColor(Color.parseColor("#10b981"));
         dotBg.setShape(GradientDrawable.OVAL);
         dotView.setBackground(dotBg);
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dpToPx(7), dpToPx(7));
-        dotParams.setMargins(dpToPx(4), 0, dpToPx(4), 0);
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dpToPx(6), dpToPx(6));
+        dotParams.setMargins(dpToPx(6), 0, dpToPx(6), 0);
         dotView.setLayoutParams(dotParams);
         idleLayout.addView(dotView);
 
@@ -930,6 +972,9 @@ public class FloatingIslandService extends Service {
 
     private void updateViewData() {
         Drawable icon = getAppIcon();
+        if (idleIconIv != null) {
+            idleIconIv.setImageDrawable(icon);
+        }
         if (centerTitleTv != null) {
             centerTitleTv.setText((currentAppName != null && !currentAppName.isEmpty()) ? currentAppName : "Rambox");
         }
