@@ -32,6 +32,7 @@ import android.view.DisplayCutout;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
@@ -66,6 +67,18 @@ public class FloatingIslandService extends Service {
     private WindowManager.LayoutParams params;
     private boolean isViewAdded = false;
 
+    // Persistent View Containers (Never destroyed during lifetime to prevent dropped clicks/touch lag)
+    private LinearLayout idleLayout;
+    private LinearLayout centerExpandedLayout;
+    private LinearLayout cornerExpandedLayout;
+
+    // UI Element References
+    private TextView centerTitleTv;
+    private ImageView centerIconIv;
+    private TextView cornerTitleTv;
+    private ImageView cornerIconIv;
+
+    // Geometry & Camera Cutout
     private CameraPosition cameraPosition = CameraPosition.CENTER;
     private int cameraCenterX = -1;
     private int cameraCenterY = -1;
@@ -73,8 +86,11 @@ public class FloatingIslandService extends Service {
     private int cameraHeight = 0;
     private int manualOffsetX = 0;
     private int manualOffsetY = 0;
+    private boolean cutoutProcessed = false;
 
+    // State & Animation
     private boolean isExpanded = false;
+    private ValueAnimator boundsAnimator;
     private final Handler collapseHandler = new Handler(Looper.getMainLooper());
     private final Runnable autoCollapseRunnable = this::collapseIsland;
 
@@ -99,7 +115,7 @@ public class FloatingIslandService extends Service {
         manualOffsetY = prefs.getInt("manual_offset_y", 0);
 
         initLayoutParams();
-        buildFloatingView();
+        buildPersistentViews();
     }
 
     @Override
@@ -242,7 +258,7 @@ public class FloatingIslandService extends Service {
             PixelFormat.TRANSLUCENT
         );
 
-        // Allow entering system status bar and display cutout area!
+        // Allow drawing directly into system status bar and display cutout area!
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
@@ -267,6 +283,7 @@ public class FloatingIslandService extends Service {
         cameraHeight = dpToPx(28);
         cameraPosition = CameraPosition.CENTER;
 
+        // Try reading window insets immediately on Android 11+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && windowManager != null) {
             try {
                 WindowMetrics metrics = windowManager.getCurrentWindowMetrics();
@@ -318,18 +335,18 @@ public class FloatingIslandService extends Service {
     private int getTargetWidth() {
         if (!isExpanded) {
             return (cameraPosition == CameraPosition.CENTER) 
-                ? Math.max(dpToPx(56), cameraWidth + dpToPx(22))
-                : Math.max(dpToPx(46), cameraWidth + dpToPx(16));
+                ? Math.max(dpToPx(76), cameraWidth + dpToPx(36))
+                : Math.max(dpToPx(60), cameraWidth + dpToPx(24));
         } else {
-            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(245) : dpToPx(185);
+            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(248) : dpToPx(188);
         }
     }
 
     private int getTargetHeight() {
         if (!isExpanded) {
-            return Math.max(dpToPx(28), cameraHeight + dpToPx(8));
+            return Math.max(dpToPx(32), cameraHeight + dpToPx(10));
         } else {
-            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(34) : dpToPx(78);
+            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(36) : dpToPx(78);
         }
     }
 
@@ -354,7 +371,7 @@ public class FloatingIslandService extends Service {
         if (!isExpanded || cameraPosition == CameraPosition.CENTER) {
             y = Math.max(dpToPx(4), cameraCenterY - h / 2);
         } else {
-            // For corner cameras, anchor top to camera cutout and expand downward!
+            // Anchor top to camera cutout and expand downward
             y = Math.max(dpToPx(4), cameraCenterY - cameraHeight / 2 - dpToPx(4));
         }
         return y + manualOffsetY;
@@ -367,58 +384,89 @@ public class FloatingIslandService extends Service {
         params.y = getTargetY();
     }
 
-    private void buildFloatingView() {
+    // =========================================================================
+    // PERSISTENT VIEW BUILDER (Created ONCE to eliminate recreation loops)
+    // =========================================================================
+    private void buildPersistentViews() {
         floatingView = new FrameLayout(this);
 
-        // Apply Cutout insets listener dynamically when attached
+        // Apply Cutout insets listener ONCE safely without entering recursive relayout loop
         floatingView.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && !cutoutProcessed) {
                 DisplayCutout cutout = insets.getDisplayCutout();
                 if (cutout != null) {
-                    applyCutout(cutout);
-                    rebuildContent();
-                    if (isViewAdded && windowManager != null) {
-                        try {
-                            windowManager.updateViewLayout(floatingView, params);
-                        } catch (Exception ignored) {}
+                    List<Rect> rects = cutout.getBoundingRects();
+                    if (rects != null && !rects.isEmpty()) {
+                        cutoutProcessed = true;
+                        applyCutout(cutout);
+                        if (!isExpanded && isViewAdded && windowManager != null) {
+                            updateParamsForCurrentState();
+                            try {
+                                windowManager.updateViewLayout(floatingView, params);
+                            } catch (Exception ignored) {}
+                        }
                     }
                 }
             }
             return insets;
         });
 
-        rebuildContent();
+        // 1. Build Idle View Container
+        buildIdleLayout();
+
+        // 2. Build Expanded Center View Container
+        buildCenterExpandedLayout();
+
+        // 3. Build Expanded Corner View Container
+        buildCornerExpandedLayout();
+
+        // Apply initial UI visibility state
+        showIdleUI();
     }
 
-    private void rebuildContent() {
-        floatingView.removeAllViews();
+    private void showIdleUI() {
+        if (idleLayout != null) idleLayout.setVisibility(View.VISIBLE);
+        if (centerExpandedLayout != null) centerExpandedLayout.setVisibility(View.GONE);
+        if (cornerExpandedLayout != null) cornerExpandedLayout.setVisibility(View.GONE);
 
         GradientDrawable capsuleBg = new GradientDrawable();
-        capsuleBg.setColor(Color.parseColor("#050508")); // AMOLED deep black
-        capsuleBg.setCornerRadius(isExpanded && cameraPosition != CameraPosition.CENTER ? dpToPx(18) : dpToPx(24));
+        capsuleBg.setColor(Color.parseColor("#050508"));
+        capsuleBg.setCornerRadius(dpToPx(24));
         capsuleBg.setStroke(dpToPx(1f), Color.parseColor("#2a2a3e"));
         floatingView.setBackground(capsuleBg);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             floatingView.setElevation(dpToPx(12));
         }
+    }
 
-        if (!isExpanded) {
-            buildIdleView();
+    private void showExpandedUI() {
+        if (idleLayout != null) idleLayout.setVisibility(View.GONE);
+
+        GradientDrawable capsuleBg = new GradientDrawable();
+        capsuleBg.setColor(Color.parseColor("#050508"));
+        capsuleBg.setCornerRadius(cameraPosition != CameraPosition.CENTER ? dpToPx(18) : dpToPx(24));
+        capsuleBg.setStroke(dpToPx(1f), Color.parseColor("#2a2a3e"));
+        floatingView.setBackground(capsuleBg);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            floatingView.setElevation(dpToPx(14));
+        }
+
+        if (cameraPosition == CameraPosition.CENTER) {
+            if (centerExpandedLayout != null) centerExpandedLayout.setVisibility(View.VISIBLE);
+            if (cornerExpandedLayout != null) cornerExpandedLayout.setVisibility(View.GONE);
         } else {
-            if (cameraPosition == CameraPosition.CENTER) {
-                buildExpandedCenterView();
-            } else {
-                buildExpandedCornerView();
-            }
+            if (centerExpandedLayout != null) centerExpandedLayout.setVisibility(View.GONE);
+            if (cornerExpandedLayout != null) cornerExpandedLayout.setVisibility(View.VISIBLE);
         }
     }
 
     // =========================================================================
-    // 1. IDLE VIEW (Miniature pill wrapping camera punch hole)
+    // 1. IDLE VIEW: Minimalist Pill over Camera Punch Hole
     // =========================================================================
-    private void buildIdleView() {
-        LinearLayout idleLayout = new LinearLayout(this);
+    private void buildIdleLayout() {
+        idleLayout = new LinearLayout(this);
         idleLayout.setOrientation(LinearLayout.HORIZONTAL);
         idleLayout.setGravity(Gravity.CENTER);
         idleLayout.setLayoutParams(new FrameLayout.LayoutParams(
@@ -426,33 +474,82 @@ public class FloatingIslandService extends Service {
             FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
-        // Pulsing emerald status dot
+        // Pulsing emerald status dot next to camera hole
         View dotView = new View(this);
         GradientDrawable dotBg = new GradientDrawable();
         dotBg.setColor(Color.parseColor("#10b981"));
         dotBg.setShape(GradientDrawable.OVAL);
         dotView.setBackground(dotBg);
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dpToPx(6), dpToPx(6));
-        dotParams.setMargins(dpToPx(2), 0, dpToPx(2), 0);
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dpToPx(7), dpToPx(7));
+        dotParams.setMargins(dpToPx(4), 0, dpToPx(4), 0);
         dotView.setLayoutParams(dotParams);
         idleLayout.addView(dotView);
 
-        // Tap on Idle expands the Dynamic Island!
-        idleLayout.setOnClickListener(v -> expandIsland());
+        // Touch handling: Clean tap detection vs drag adjustment
+        final int touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
+        idleLayout.setOnTouchListener(new View.OnTouchListener() {
+            private float downX, downY;
+            private int startParamX, startParamY;
+            private boolean isDrag = false;
 
-        attachDragListener(idleLayout);
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        downX = event.getRawX();
+                        downY = event.getRawY();
+                        startParamX = params.x;
+                        startParamY = params.y;
+                        isDrag = false;
+                        return true;
+
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = event.getRawX() - downX;
+                        float dy = event.getRawY() - downY;
+                        if (!isDrag && Math.hypot(dx, dy) > touchSlop) {
+                            isDrag = true;
+                        }
+                        if (isDrag) {
+                            params.x = (int) (startParamX + dx);
+                            params.y = (int) (startParamY + dy);
+                            try {
+                                if (isViewAdded && windowManager != null) {
+                                    windowManager.updateViewLayout(floatingView, params);
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                        return true;
+
+                    case MotionEvent.ACTION_UP:
+                        if (!isDrag) {
+                            expandIsland();
+                        } else {
+                            manualOffsetX += (params.x - startParamX);
+                            manualOffsetY += (params.y - startParamY);
+                            SharedPreferences prefs = getSharedPreferences("rambox_island_overlay", MODE_PRIVATE);
+                            prefs.edit()
+                                .putInt("manual_offset_x", manualOffsetX)
+                                .putInt("manual_offset_y", manualOffsetY)
+                                .apply();
+                        }
+                        return true;
+                }
+                return false;
+            }
+        });
+
         floatingView.addView(idleLayout);
     }
 
     // =========================================================================
     // 2. EXPANDED VIEW: CENTER CAMERA (Melebar ke Samping / Horizontal)
     // =========================================================================
-    private void buildExpandedCenterView() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.HORIZONTAL);
-        layout.setGravity(Gravity.CENTER_VERTICAL);
-        layout.setPadding(dpToPx(6), dpToPx(3), dpToPx(6), dpToPx(3));
-        layout.setLayoutParams(new FrameLayout.LayoutParams(
+    private void buildCenterExpandedLayout() {
+        centerExpandedLayout = new LinearLayout(this);
+        centerExpandedLayout.setOrientation(LinearLayout.HORIZONTAL);
+        centerExpandedLayout.setGravity(Gravity.CENTER_VERTICAL);
+        centerExpandedLayout.setPadding(dpToPx(6), dpToPx(3), dpToPx(6), dpToPx(3));
+        centerExpandedLayout.setLayoutParams(new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, 
             FrameLayout.LayoutParams.MATCH_PARENT
         ));
@@ -461,20 +558,20 @@ public class FloatingIslandService extends Service {
         TextView prevButton = new TextView(this);
         prevButton.setText("‹");
         prevButton.setTextColor(Color.parseColor("#cbd5e1"));
-        prevButton.setTextSize(17);
+        prevButton.setTextSize(18);
         prevButton.setTypeface(Typeface.DEFAULT_BOLD);
-        prevButton.setPadding(dpToPx(6), dpToPx(1), dpToPx(6), dpToPx(1));
+        prevButton.setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(2));
         prevButton.setOnClickListener(v -> {
             navigateService("prev");
             resetAutoCollapseTimer();
         });
-        layout.addView(prevButton);
+        centerExpandedLayout.addView(prevButton);
 
         // 2. Center Pill (Icon + App Name + Dot) -> Clicking opens Rambox!
         LinearLayout centerPill = new LinearLayout(this);
         centerPill.setOrientation(LinearLayout.HORIZONTAL);
         centerPill.setGravity(Gravity.CENTER_VERTICAL);
-        centerPill.setPadding(dpToPx(7), dpToPx(3), dpToPx(7), dpToPx(3));
+        centerPill.setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4));
         GradientDrawable centerBg = new GradientDrawable();
         centerBg.setColor(Color.parseColor("#1a1a2c"));
         centerBg.setCornerRadius(dpToPx(14));
@@ -482,21 +579,21 @@ public class FloatingIslandService extends Service {
         LinearLayout.LayoutParams pillLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
         centerPill.setLayoutParams(pillLp);
 
-        ImageView iconIv = new ImageView(this);
-        iconIv.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(17), dpToPx(17)));
-        iconIv.setImageDrawable(getAppIcon());
-        centerPill.addView(iconIv);
+        centerIconIv = new ImageView(this);
+        centerIconIv.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(17), dpToPx(17)));
+        centerIconIv.setImageDrawable(getAppIcon());
+        centerPill.addView(centerIconIv);
 
-        TextView titleTv = new TextView(this);
-        titleTv.setText(currentAppName);
-        titleTv.setTextColor(Color.WHITE);
-        titleTv.setTextSize(11);
-        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-        titleTv.setSingleLine(true);
+        centerTitleTv = new TextView(this);
+        centerTitleTv.setText(currentAppName);
+        centerTitleTv.setTextColor(Color.WHITE);
+        centerTitleTv.setTextSize(11);
+        centerTitleTv.setTypeface(Typeface.DEFAULT_BOLD);
+        centerTitleTv.setSingleLine(true);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f);
-        titleParams.setMargins(dpToPx(5), 0, dpToPx(5), 0);
-        titleTv.setLayoutParams(titleParams);
-        centerPill.addView(titleTv);
+        titleParams.setMargins(dpToPx(6), 0, dpToPx(6), 0);
+        centerTitleTv.setLayoutParams(titleParams);
+        centerPill.addView(centerTitleTv);
 
         View dotView = new View(this);
         GradientDrawable dotBg = new GradientDrawable();
@@ -510,47 +607,46 @@ public class FloatingIslandService extends Service {
             bringRamboxToFront();
             collapseIsland();
         });
-        layout.addView(centerPill);
+        centerExpandedLayout.addView(centerPill);
 
         // 3. Next Button (›)
         TextView nextButton = new TextView(this);
         nextButton.setText("›");
         nextButton.setTextColor(Color.parseColor("#cbd5e1"));
-        nextButton.setTextSize(17);
+        nextButton.setTextSize(18);
         nextButton.setTypeface(Typeface.DEFAULT_BOLD);
-        nextButton.setPadding(dpToPx(6), dpToPx(1), dpToPx(6), dpToPx(1));
+        nextButton.setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(2));
         nextButton.setOnClickListener(v -> {
             navigateService("next");
             resetAutoCollapseTimer();
         });
-        layout.addView(nextButton);
+        centerExpandedLayout.addView(nextButton);
 
         // 4. Close/Collapse Button (✕)
         TextView closeBtn = new TextView(this);
         closeBtn.setText("✕");
         closeBtn.setTextColor(Color.parseColor("#64748b"));
-        closeBtn.setTextSize(10);
-        closeBtn.setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2));
+        closeBtn.setTextSize(11);
+        closeBtn.setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2));
         closeBtn.setOnClickListener(v -> collapseIsland());
-        layout.addView(closeBtn);
+        centerExpandedLayout.addView(closeBtn);
 
-        attachDragListener(layout);
-        floatingView.addView(layout);
+        floatingView.addView(centerExpandedLayout);
     }
 
     // =========================================================================
-    // 3. EXPANDED VIEW: CORNER CAMERA (Melebar ke Bawah / Vertical Dropdown)
+    // 3. EXPANDED VIEW: CORNER CAMERA (Melebar ke Bawah / Dropdown Vertical)
     // =========================================================================
-    private void buildExpandedCornerView() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
-        layout.setLayoutParams(new FrameLayout.LayoutParams(
+    private void buildCornerExpandedLayout() {
+        cornerExpandedLayout = new LinearLayout(this);
+        cornerExpandedLayout.setOrientation(LinearLayout.VERTICAL);
+        cornerExpandedLayout.setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6));
+        cornerExpandedLayout.setLayoutParams(new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, 
             FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
-        // ROW 1: Header (Mini Punch Indicator + Dot + Close)
+        // ROW 1: Header (Mini Status Dot + Title + Close)
         LinearLayout row1 = new LinearLayout(this);
         row1.setOrientation(LinearLayout.HORIZONTAL);
         row1.setGravity(Gravity.CENTER_VERTICAL);
@@ -580,11 +676,11 @@ public class FloatingIslandService extends Service {
         TextView closeBtn = new TextView(this);
         closeBtn.setText("✕");
         closeBtn.setTextColor(Color.parseColor("#64748b"));
-        closeBtn.setTextSize(10);
-        closeBtn.setPadding(dpToPx(4), 0, dpToPx(2), 0);
+        closeBtn.setTextSize(11);
+        closeBtn.setPadding(dpToPx(6), 0, dpToPx(2), 0);
         closeBtn.setOnClickListener(v -> collapseIsland());
         row1.addView(closeBtn);
-        layout.addView(row1);
+        cornerExpandedLayout.addView(row1);
 
         // ROW 2: Service Capsule (App Icon + Name) -> Click opens Rambox!
         LinearLayout row2 = new LinearLayout(this);
@@ -602,25 +698,25 @@ public class FloatingIslandService extends Service {
         r2Params.setMargins(0, dpToPx(4), 0, dpToPx(4));
         row2.setLayoutParams(r2Params);
 
-        ImageView iconIv = new ImageView(this);
-        iconIv.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(16), dpToPx(16)));
-        iconIv.setImageDrawable(getAppIcon());
-        row2.addView(iconIv);
+        cornerIconIv = new ImageView(this);
+        cornerIconIv.setLayoutParams(new LinearLayout.LayoutParams(dpToPx(16), dpToPx(16)));
+        cornerIconIv.setImageDrawable(getAppIcon());
+        row2.addView(cornerIconIv);
 
-        TextView titleTv = new TextView(this);
-        titleTv.setText(currentAppName);
-        titleTv.setTextColor(Color.WHITE);
-        titleTv.setTextSize(11);
-        titleTv.setTypeface(Typeface.DEFAULT_BOLD);
-        titleTv.setSingleLine(true);
-        titleTv.setPadding(dpToPx(6), 0, 0, 0);
-        row2.addView(titleTv);
+        cornerTitleTv = new TextView(this);
+        cornerTitleTv.setText(currentAppName);
+        cornerTitleTv.setTextColor(Color.WHITE);
+        cornerTitleTv.setTextSize(11);
+        cornerTitleTv.setTypeface(Typeface.DEFAULT_BOLD);
+        cornerTitleTv.setSingleLine(true);
+        cornerTitleTv.setPadding(dpToPx(6), 0, 0, 0);
+        row2.addView(cornerTitleTv);
 
         row2.setOnClickListener(v -> {
             bringRamboxToFront();
             collapseIsland();
         });
-        layout.addView(row2);
+        cornerExpandedLayout.addView(row2);
 
         // ROW 3: Navigation Controls (‹ Prev | Next ›)
         LinearLayout row3 = new LinearLayout(this);
@@ -636,7 +732,7 @@ public class FloatingIslandService extends Service {
         prevBtn.setTextColor(Color.parseColor("#cbd5e1"));
         prevBtn.setTextSize(10);
         prevBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        prevBtn.setPadding(dpToPx(10), dpToPx(2), dpToPx(10), dpToPx(2));
+        prevBtn.setPadding(dpToPx(12), dpToPx(3), dpToPx(12), dpToPx(3));
         prevBtn.setOnClickListener(v -> {
             navigateService("prev");
             resetAutoCollapseTimer();
@@ -648,17 +744,16 @@ public class FloatingIslandService extends Service {
         nextBtn.setTextColor(Color.parseColor("#cbd5e1"));
         nextBtn.setTextSize(10);
         nextBtn.setTypeface(Typeface.DEFAULT_BOLD);
-        nextBtn.setPadding(dpToPx(10), dpToPx(2), dpToPx(10), dpToPx(2));
+        nextBtn.setPadding(dpToPx(12), dpToPx(3), dpToPx(12), dpToPx(3));
         nextBtn.setOnClickListener(v -> {
             navigateService("next");
             resetAutoCollapseTimer();
         });
         row3.addView(nextBtn);
 
-        layout.addView(row3);
+        cornerExpandedLayout.addView(row3);
 
-        attachDragListener(layout);
-        floatingView.addView(layout);
+        floatingView.addView(cornerExpandedLayout);
     }
 
     private Drawable getAppIcon() {
@@ -673,11 +768,16 @@ public class FloatingIslandService extends Service {
     }
 
     // =========================================================================
-    // ANIMATION EXPAND & COLLAPSE (Smooth fluid transitions)
+    // EXPAND & COLLAPSE ANIMATIONS (Smooth fluid transitions)
     // =========================================================================
     public void expandIsland() {
         if (isExpanded) return;
         isExpanded = true;
+        collapseHandler.removeCallbacks(autoCollapseRunnable);
+
+        if (boundsAnimator != null && boundsAnimator.isRunning()) {
+            boundsAnimator.cancel();
+        }
 
         int startW = params.width;
         int startH = params.height;
@@ -689,10 +789,8 @@ public class FloatingIslandService extends Service {
         int targetX = getTargetX();
         int targetY = getTargetY();
 
-        rebuildContent();
-
-        animateBounds(startW, targetW, startH, targetH, startX, targetX, startY, targetY, null);
-        resetAutoCollapseTimer();
+        showExpandedUI();
+        animateBounds(startW, targetW, startH, targetH, startX, targetX, startY, targetY, this::resetAutoCollapseTimer);
     }
 
     public void collapseIsland() {
@@ -700,6 +798,10 @@ public class FloatingIslandService extends Service {
         isExpanded = false;
         collapseHandler.removeCallbacks(autoCollapseRunnable);
 
+        if (boundsAnimator != null && boundsAnimator.isRunning()) {
+            boundsAnimator.cancel();
+        }
+
         int startW = params.width;
         int startH = params.height;
         int startX = params.x;
@@ -710,9 +812,7 @@ public class FloatingIslandService extends Service {
         int targetX = getTargetX();
         int targetY = getTargetY();
 
-        animateBounds(startW, targetW, startH, targetH, startX, targetX, startY, targetY, () -> {
-            rebuildContent();
-        });
+        animateBounds(startW, targetW, startH, targetH, startX, targetX, startY, targetY, this::showIdleUI);
     }
 
     private void resetAutoCollapseTimer() {
@@ -721,10 +821,10 @@ public class FloatingIslandService extends Service {
     }
 
     private void animateBounds(int fromW, int toW, int fromH, int toH, int fromX, int toX, int fromY, int toY, Runnable onEnd) {
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(220);
-        animator.setInterpolator(new DecelerateInterpolator());
-        animator.addUpdateListener(animation -> {
+        boundsAnimator = ValueAnimator.ofFloat(0f, 1f);
+        boundsAnimator.setDuration(240);
+        boundsAnimator.setInterpolator(new DecelerateInterpolator());
+        boundsAnimator.addUpdateListener(animation -> {
             float frac = animation.getAnimatedFraction();
             params.width = (int) (fromW + (toW - fromW) * frac);
             params.height = (int) (fromH + (toH - fromH) * frac);
@@ -736,67 +836,13 @@ public class FloatingIslandService extends Service {
                 }
             } catch (Exception ignored) {}
         });
-        animator.addListener(new AnimatorListenerAdapter() {
+        boundsAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
                 if (onEnd != null) onEnd.run();
             }
         });
-        animator.start();
-    }
-
-    // =========================================================================
-    // DRAG ADJUSTMENT LISTENER (For fine-tuning alignment with camera)
-    // =========================================================================
-    private void attachDragListener(View view) {
-        view.setOnTouchListener(new View.OnTouchListener() {
-            private int initialX, initialY;
-            private float initialTouchX, initialTouchY;
-            private boolean isDragging = false;
-
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        initialX = params.x;
-                        initialY = params.y;
-                        initialTouchX = event.getRawX();
-                        initialTouchY = event.getRawY();
-                        isDragging = false;
-                        return false;
-
-                    case MotionEvent.ACTION_MOVE:
-                        int dx = (int) (event.getRawX() - initialTouchX);
-                        int dy = (int) (event.getRawY() - initialTouchY);
-                        if (Math.hypot(dx, dy) > dpToPx(8)) {
-                            isDragging = true;
-                            params.x = initialX + dx;
-                            params.y = initialY + dy;
-                            try {
-                                if (isViewAdded && windowManager != null && floatingView != null) {
-                                    windowManager.updateViewLayout(floatingView, params);
-                                }
-                            } catch (Exception ignored) {}
-                            return true;
-                        }
-                        return false;
-
-                    case MotionEvent.ACTION_UP:
-                        if (isDragging) {
-                            manualOffsetX += (params.x - initialX);
-                            manualOffsetY += (params.y - initialY);
-                            SharedPreferences prefs = getSharedPreferences("rambox_island_overlay", MODE_PRIVATE);
-                            prefs.edit()
-                                .putInt("manual_offset_x", manualOffsetX)
-                                .putInt("manual_offset_y", manualOffsetY)
-                                .apply();
-                            return true;
-                        }
-                        return false;
-                }
-                return false;
-            }
-        });
+        boundsAnimator.start();
     }
 
     private void bringRamboxToFront() {
@@ -842,8 +888,18 @@ public class FloatingIslandService extends Service {
     }
 
     private void updateViewData() {
-        if (floatingView != null) {
-            rebuildContent();
+        Drawable icon = getAppIcon();
+        if (centerTitleTv != null) {
+            centerTitleTv.setText((currentAppName != null && !currentAppName.isEmpty()) ? currentAppName : "Rambox");
+        }
+        if (centerIconIv != null) {
+            centerIconIv.setImageDrawable(icon);
+        }
+        if (cornerTitleTv != null) {
+            cornerTitleTv.setText((currentAppName != null && !currentAppName.isEmpty()) ? currentAppName : "Rambox");
+        }
+        if (cornerIconIv != null) {
+            cornerIconIv.setImageDrawable(icon);
         }
     }
 
@@ -882,6 +938,9 @@ public class FloatingIslandService extends Service {
     public void onDestroy() {
         super.onDestroy();
         collapseHandler.removeCallbacks(autoCollapseRunnable);
+        if (boundsAnimator != null && boundsAnimator.isRunning()) {
+            boundsAnimator.cancel();
+        }
         if (floatingView != null && isViewAdded && windowManager != null) {
             try {
                 windowManager.removeView(floatingView);
