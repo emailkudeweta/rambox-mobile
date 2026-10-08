@@ -19,6 +19,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.content.SharedPreferences;
 import android.provider.Settings;
@@ -112,30 +114,11 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
-        // Keep Rambox alive in background when minimized or switching apps!
-        startBackgroundPersistence();
-    }
-
-    public void startBackgroundPersistence() {
-        try {
-            Intent intent = new Intent(this, FloatingIslandService.class);
-            if (activeNativePackage != null && !activeNativePackage.isEmpty()) {
-                intent.setAction(FloatingIslandService.ACTION_SHOW);
-                intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, activeNativeAppName);
-                intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, activeNativePackage);
-            } else {
-                intent.setAction(FloatingIslandService.ACTION_KEEP_ALIVE);
-                intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, "Rambox");
-                intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, "");
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent);
-            } else {
-                startService(intent);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error starting background persistence", e);
-        }
+        // Keep Dynamic Island floating on the launcher & everywhere when minimized or switching apps!
+        showFloatingIsland(
+            (activeNativeAppName != null && !activeNativeAppName.isEmpty()) ? activeNativeAppName : "Rambox",
+            (activeNativePackage != null) ? activeNativePackage : ""
+        );
     }
 
     @Override
@@ -210,6 +193,15 @@ public class MainActivity extends BridgeActivity {
         // 6. Register Auto-Updater & Native Direct Launcher JavaScript Bridges
         webView.addJavascriptInterface(new RamboxAppUpdaterInterface(), "RamboxUpdater");
         webView.addJavascriptInterface(new RamboxNativeBridge(), "RamboxNative");
+
+        // 7. Auto-check overlay permission so Dynamic Island can appear over launcher & other apps
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            SharedPreferences prefs = getSharedPreferences("rambox_preferences", MODE_PRIVATE);
+            if (!prefs.getBoolean("overlay_prompted_once", false)) {
+                prefs.edit().putBoolean("overlay_prompted_once", true).apply();
+                new Handler(Looper.getMainLooper()).postDelayed(this::requestOverlayPermission, 1500);
+            }
+        }
 
         Log.d(TAG, "Rambox Mobile WebEngine initialized successfully.");
     }
@@ -384,23 +376,13 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void requestOverlayPermission() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(MainActivity.this)) {
-                try {
-                    Toast.makeText(
-                        MainActivity.this,
-                        "Aktifkan izin 'Tampilkan di atas aplikasi lain' agar Dynamic Island muncul di atas WhatsApp",
-                        Toast.LENGTH_LONG
-                    ).show();
-                    Intent intent = new Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + getPackageName())
-                    );
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(intent);
-                } catch (Exception e) {
-                    Log.e(TAG, "Error requesting overlay permission", e);
-                }
-            }
+            runOnUiThread(() -> MainActivity.this.requestOverlayPermission());
+        }
+
+        @JavascriptInterface
+        public void setActiveApp(String appName, String packageName) {
+            activeNativeAppName = (appName != null && !appName.trim().isEmpty()) ? appName.trim() : "Rambox";
+            activeNativePackage = (packageName != null) ? packageName.trim() : "";
         }
 
         @JavascriptInterface
@@ -466,15 +448,36 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    public void requestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            try {
+                Toast.makeText(
+                    this,
+                    "Aktifkan izin 'Tampilkan di atas aplikasi lain' agar Dynamic Island muncul di launcher dan layar HP Anda",
+                    Toast.LENGTH_LONG
+                ).show();
+                Intent intent = new Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            } catch (Exception e) {
+                Log.e(TAG, "Error requesting overlay permission", e);
+            }
+        }
+    }
+
     public void showFloatingIsland(String appName, String packageName) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Cannot show Floating Island: canDrawOverlays is false.");
             return;
         }
         try {
             Intent intent = new Intent(this, FloatingIslandService.class);
             intent.setAction(FloatingIslandService.ACTION_SHOW);
-            intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, appName);
-            intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, packageName);
+            intent.putExtra(FloatingIslandService.EXTRA_APP_NAME, (appName != null && !appName.isEmpty()) ? appName : "Rambox");
+            intent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, (packageName != null) ? packageName : "");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent);
             } else {

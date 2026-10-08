@@ -28,7 +28,7 @@ public class BootReceiver extends BroadcastReceiver {
                 Log.d(TAG, "AutoStart is enabled. Starting FloatingIslandService in background.");
                 try {
                     Intent serviceIntent = new Intent(context, FloatingIslandService.class);
-                    serviceIntent.setAction(FloatingIslandService.ACTION_KEEP_ALIVE);
+                    serviceIntent.setAction(FloatingIslandService.ACTION_SHOW);
                     serviceIntent.putExtra(FloatingIslandService.EXTRA_APP_NAME, "Rambox");
                     serviceIntent.putExtra(FloatingIslandService.EXTRA_PACKAGE_NAME, "");
 

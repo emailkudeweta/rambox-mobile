@@ -76,10 +76,7 @@ public class FloatingIslandService extends Service {
             if (ACTION_HIDE.equals(action)) {
                 hideFloatingView();
                 updateNotificationContent("Rambox Mobile Aktif di Latar Belakang", "Ketuk untuk membuka Rambox Workspace");
-            } else if (ACTION_KEEP_ALIVE.equals(action)) {
-                hideFloatingView();
-                updateNotificationContent("Rambox Mobile Aktif di Latar Belakang", "Ketuk untuk membuka Rambox Workspace");
-            } else if (ACTION_SHOW.equals(action) || action == null) {
+            } else if (ACTION_SHOW.equals(action) || ACTION_KEEP_ALIVE.equals(action) || action == null) {
                 String appName = intent.getStringExtra(EXTRA_APP_NAME);
                 String packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME);
                 if (appName != null && !appName.trim().isEmpty()) {
@@ -90,8 +87,10 @@ public class FloatingIslandService extends Service {
                 }
                 updateViewData();
                 showFloatingView();
-                updateNotificationContent("Dynamic Island: " + currentAppName, "Ketuk untuk kembali ke Rambox");
+                updateNotificationContent("Dynamic Island: " + currentAppName, "Ketuk untuk membuka Rambox Workspace");
             }
+        } else {
+            showFloatingView();
         }
         return START_STICKY;
     }
@@ -99,12 +98,14 @@ public class FloatingIslandService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
-        Log.d(TAG, "Rambox task removed from Recents. Re-arming service to keep running in background.");
+        Log.d(TAG, "Rambox task removed from Recents. Re-arming service to keep Dynamic Island alive.");
 
         try {
             Intent restartServiceIntent = new Intent(getApplicationContext(), FloatingIslandService.class);
             restartServiceIntent.setPackage(getPackageName());
-            restartServiceIntent.setAction(ACTION_KEEP_ALIVE);
+            restartServiceIntent.setAction(ACTION_SHOW);
+            restartServiceIntent.putExtra(EXTRA_APP_NAME, currentAppName);
+            restartServiceIntent.putExtra(EXTRA_PACKAGE_NAME, currentPackageName);
 
             PendingIntent restartPendingIntent = PendingIntent.getService(
                 getApplicationContext(),
@@ -324,11 +325,9 @@ public class FloatingIslandService extends Service {
 
         floatingView = capsuleLayout;
 
-        // Smooth Drag Listener
-        floatingView.setOnTouchListener(new View.OnTouchListener() {
+        gripView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
-            private boolean isMoving = false;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -338,32 +337,24 @@ public class FloatingIslandService extends Service {
                         initialY = params.y;
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
-                        isMoving = false;
-                        return false;
+                        return true;
 
                     case MotionEvent.ACTION_MOVE:
                         int dx = (int) (event.getRawX() - initialTouchX);
                         int dy = (int) (event.getRawY() - initialTouchY);
-                        if (Math.hypot(dx, dy) > dpToPx(6)) {
-                            isMoving = true;
-                            params.x = initialX + dx;
-                            params.y = initialY + dy;
-                            try {
-                                if (isViewAdded && windowManager != null) {
-                                    windowManager.updateViewLayout(floatingView, params);
-                                }
-                            } catch (Exception ignored) {}
-                            return true;
-                        }
-                        return false;
+                        params.x = initialX + dx;
+                        params.y = initialY + dy;
+                        try {
+                            if (isViewAdded && windowManager != null) {
+                                windowManager.updateViewLayout(floatingView, params);
+                            }
+                        } catch (Exception ignored) {}
+                        return true;
 
                     case MotionEvent.ACTION_UP:
-                        if (isMoving) {
-                            SharedPreferences prefs = getSharedPreferences("rambox_island_overlay", MODE_PRIVATE);
-                            prefs.edit().putInt("pos_x", params.x).putInt("pos_y", params.y).apply();
-                            return true;
-                        }
-                        return false;
+                        SharedPreferences prefs = getSharedPreferences("rambox_island_overlay", MODE_PRIVATE);
+                        prefs.edit().putInt("pos_x", params.x).putInt("pos_y", params.y).apply();
+                        return true;
                 }
                 return false;
             }
@@ -374,7 +365,7 @@ public class FloatingIslandService extends Service {
 
     private void updateViewData() {
         if (titleTextView != null) {
-            titleTextView.setText(currentAppName);
+            titleTextView.setText((currentAppName != null && !currentAppName.isEmpty()) ? currentAppName : "Rambox");
         }
         if (iconImageView != null) {
             Drawable icon = null;
@@ -395,7 +386,17 @@ public class FloatingIslandService extends Service {
         try {
             Intent intent = new Intent(this, MainActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            startActivity(intent);
+            PendingIntent pi = PendingIntent.getActivity(
+                this,
+                99,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+            );
+            try {
+                pi.send();
+            } catch (Exception ignored) {
+                startActivity(intent);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error bringing Rambox to front", e);
         }
@@ -407,7 +408,17 @@ public class FloatingIslandService extends Service {
             intent.setAction("ACTION_NAVIGATE_APP");
             intent.putExtra("DIRECTION", direction);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            startActivity(intent);
+            PendingIntent pi = PendingIntent.getActivity(
+                this,
+                98,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+            );
+            try {
+                pi.send();
+            } catch (Exception ignored) {
+                startActivity(intent);
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error navigating service from floating island", e);
         }
@@ -416,15 +427,16 @@ public class FloatingIslandService extends Service {
     public void showFloatingView() {
         if (floatingView == null || windowManager == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Cannot show floating view: Overlay permission (canDrawOverlays) is NOT granted.");
             return;
         }
         try {
-            if (!isViewAdded) {
+            updateViewData();
+            if (!isViewAdded || floatingView.getParent() == null) {
                 windowManager.addView(floatingView, params);
                 isViewAdded = true;
-            } else {
-                floatingView.setVisibility(View.VISIBLE);
             }
+            floatingView.setVisibility(View.VISIBLE);
         } catch (Exception e) {
             Log.e(TAG, "Error adding/showing floating view", e);
         }

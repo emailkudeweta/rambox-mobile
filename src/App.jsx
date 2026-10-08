@@ -7,7 +7,8 @@ import ServicesModal from './components/ServicesModal';
 import SettingsModal, { DEFAULT_PREFERENCES } from './components/SettingsModal';
 import AutoUpdaterModal from './components/AutoUpdaterModal';
 import DynamicIsland from './ui/DynamicIsland';
-import { launchAppDirectly } from './utils/nativeLauncher';
+import { launchAppDirectly, getInstalledPackage } from './utils/nativeLauncher';
+import { ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [preferences, setPreferences] = useState(() => {
@@ -64,8 +65,34 @@ export default function App() {
   const [isServicesModalOpen, setIsServicesModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isManualUpdateOpen, setIsManualUpdateOpen] = useState(false);
+  const [hasOverlayPermission, setHasOverlayPermission] = useState(true);
 
   const wakeLockRef = useRef(null);
+
+  // Check and sync overlay permission (canDrawOverlays)
+  useEffect(() => {
+    const checkOverlay = () => {
+      if (window.RamboxNative && window.RamboxNative.canDrawOverlays) {
+        try {
+          setHasOverlayPermission(window.RamboxNative.canDrawOverlays());
+        } catch (e) {}
+      }
+    };
+    checkOverlay();
+    window.addEventListener('focus', checkOverlay);
+    return () => window.removeEventListener('focus', checkOverlay);
+  }, []);
+
+  // Sync active app to Native Bridge so floating island always knows which app is open
+  useEffect(() => {
+    const currentApp = apps.find(a => a.id === activeAppId);
+    if (currentApp && window.RamboxNative && window.RamboxNative.setActiveApp) {
+      try {
+        const pkg = getInstalledPackage(currentApp) || currentApp.packageName || '';
+        window.RamboxNative.setActiveApp(currentApp.name, pkg);
+      } catch (e) {}
+    }
+  }, [activeAppId, apps]);
 
   // Persistence of apps & active app
   useEffect(() => {
@@ -199,6 +226,31 @@ export default function App() {
         onReloadActive={handleReloadActive}
         hideLabels={preferences.hideLabels}
       />
+
+      {/* ============================================================== */}
+      {/* FLOATING OVERLAY PERMISSION WARNING BANNER                     */}
+      {/* ============================================================== */}
+      {!hasOverlayPermission && (
+        <div className="mx-4 mt-2 mb-1 p-2.5 rounded-2xl bg-amber-500/20 border border-amber-500/35 backdrop-blur-md flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-2 duration-200 shadow-xl z-30">
+          <div className="flex items-center space-x-2 mr-2">
+            <ShieldAlert size={16} className="text-amber-400 shrink-0" />
+            <div>
+              <p className="font-bold text-amber-200 text-[11px] leading-tight">Izin Dynamic Island Diperlukan</p>
+              <p className="text-[10px] text-amber-300/80 leading-tight">Aktifkan agar Dynamic Island tetap muncul di launcher saat aplikasi diminimize.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              if (window.RamboxNative?.requestOverlayPermission) {
+                window.RamboxNative.requestOverlayPermission();
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-[11px] whitespace-nowrap shrink-0 shadow-md active:scale-95 transition-all"
+          >
+            Beri Izin
+          </button>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* 2. PERSISTENT WEBVIEW STACK                                    */}

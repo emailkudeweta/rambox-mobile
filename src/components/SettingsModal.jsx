@@ -31,14 +31,33 @@ export default function SettingsModal({
   const [isClearing, setIsClearing] = useState(false);
   const [clearSuccess, setClearSuccess] = useState(false);
   const [isBatteryIgnored, setIsBatteryIgnored] = useState(false);
+  const [hasOverlay, setHasOverlay] = useState(true);
 
   useEffect(() => {
-    if (isOpen && window.RamboxNative && window.RamboxNative.isBatteryOptimizationIgnored) {
-      try {
-        setIsBatteryIgnored(window.RamboxNative.isBatteryOptimizationIgnored());
-      } catch (e) {}
+    if (isOpen && window.RamboxNative) {
+      if (window.RamboxNative.isBatteryOptimizationIgnored) {
+        try {
+          setIsBatteryIgnored(window.RamboxNative.isBatteryOptimizationIgnored());
+        } catch (e) {}
+      }
+      if (window.RamboxNative.canDrawOverlays) {
+        try {
+          setHasOverlay(window.RamboxNative.canDrawOverlays());
+        } catch (e) {}
+      }
     }
   }, [isOpen, activeTab]);
+
+  const handleRequestOverlay = () => {
+    if (window.RamboxNative && window.RamboxNative.requestOverlayPermission) {
+      window.RamboxNative.requestOverlayPermission();
+      setTimeout(() => {
+        if (window.RamboxNative?.canDrawOverlays) {
+          setHasOverlay(window.RamboxNative.canDrawOverlays());
+        }
+      }, 1500);
+    }
+  };
 
   const handleRequestBatteryOptimization = () => {
     if (window.RamboxNative && window.RamboxNative.requestIgnoreBatteryOptimization) {
@@ -229,6 +248,36 @@ export default function SettingsModal({
                   </div>
                   <p className="text-[10px] text-white/60 leading-tight">
                     Penting: Izinkan Rambox berjalan tanpa pembatasan baterai agar pesan & floating island tetap aktif saat aplikasi diminimize, ditutup, atau HP direstart.
+                  </p>
+                </div>
+
+                {/* DYNAMIC ISLAND OVERLAY PERMISSION CARD */}
+                <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                        <Smartphone size={15} />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white text-xs">Dynamic Island di Launcher</div>
+                        <div className="text-[10px] text-white/50">
+                          {hasOverlay ? '✓ Izin overlay aktif (Muncul di layar)' : 'Perlu izin tampil di atas aplikasi lain'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRequestOverlay}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] shadow-md transition-all active:scale-95 ${
+                        hasOverlay
+                          ? 'bg-emerald-600/30 text-emerald-400 border border-emerald-500/40'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                      }`}
+                    >
+                      {hasOverlay ? 'Aktif' : 'Beri Izin'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/60 leading-tight">
+                    Wajib: Aktifkan izin 'Tampilkan di atas aplikasi lain' agar Dynamic Island tetap melayang di launcher dan layar HP Anda saat aplikasi diminimize atau ditutup.
                   </p>
                 </div>
 
