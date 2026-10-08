@@ -103,17 +103,25 @@ public class MainActivity extends BridgeActivity {
 
     private String activeNativePackage = null;
     private String activeNativeAppName = null;
+    private boolean isAppForeground = false;
 
     @Override
     public void onResume() {
         super.onResume();
-        // Hide overlay whenever user is viewing Rambox directly
-        hideFloatingIsland();
+        isAppForeground = true;
+        // Keep Dynamic Island active at the camera punch-hole both inside and outside Rambox
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
+            showFloatingIsland(
+                (activeNativeAppName != null && !activeNativeAppName.isEmpty()) ? activeNativeAppName : "Rambox",
+                (activeNativePackage != null) ? activeNativePackage : ""
+            );
+        }
     }
 
     @Override
     public void onPause() {
         super.onPause();
+        isAppForeground = false;
         // Keep Dynamic Island floating on the launcher & everywhere when minimized or switching apps!
         showFloatingIsland(
             (activeNativeAppName != null && !activeNativeAppName.isEmpty()) ? activeNativeAppName : "Rambox",
@@ -144,6 +152,39 @@ public class MainActivity extends BridgeActivity {
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Error evaluating JS navigation", e);
+                    }
+                });
+            }
+        } else if ("ACTION_RAMBOX_ACTION".equals(intent.getAction())) {
+            String action = intent.getStringExtra("RAMBOX_ACTION");
+            if (action != null) {
+                runOnUiThread(() -> {
+                    try {
+                        WebView wv = getBridge().getWebView();
+                        if (wv != null) {
+                            wv.evaluateJavascript(
+                                "window.dispatchEvent(new CustomEvent('rambox-action', { detail: { action: '" + action + "' } }));",
+                                null
+                            );
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error evaluating JS action", e);
+                    }
+                });
+            }
+        } else if ("ACTION_OPEN_RAMBOX".equals(intent.getAction())) {
+            if (isAppForeground) {
+                runOnUiThread(() -> {
+                    try {
+                        WebView wv = getBridge().getWebView();
+                        if (wv != null) {
+                            wv.evaluateJavascript(
+                                "window.dispatchEvent(new CustomEvent('rambox-action', { detail: { action: 'toggle-services' } }));",
+                                null
+                            );
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error toggling services modal", e);
                     }
                 });
             }
@@ -383,6 +424,11 @@ public class MainActivity extends BridgeActivity {
         public void setActiveApp(String appName, String packageName) {
             activeNativeAppName = (appName != null && !appName.trim().isEmpty()) ? appName.trim() : "Rambox";
             activeNativePackage = (packageName != null) ? packageName.trim() : "";
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(MainActivity.this)) {
+                    showFloatingIsland(activeNativeAppName, activeNativePackage);
+                }
+            });
         }
 
         @JavascriptInterface

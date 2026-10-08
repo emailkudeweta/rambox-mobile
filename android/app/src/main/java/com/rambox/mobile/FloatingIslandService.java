@@ -338,7 +338,7 @@ public class FloatingIslandService extends Service {
                 ? Math.max(dpToPx(76), cameraWidth + dpToPx(36))
                 : Math.max(dpToPx(60), cameraWidth + dpToPx(24));
         } else {
-            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(248) : dpToPx(188);
+            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(268) : dpToPx(190);
         }
     }
 
@@ -346,7 +346,7 @@ public class FloatingIslandService extends Service {
         if (!isExpanded) {
             return Math.max(dpToPx(32), cameraHeight + dpToPx(10));
         } else {
-            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(36) : dpToPx(78);
+            return (cameraPosition == CameraPosition.CENTER) ? dpToPx(38) : dpToPx(82);
         }
     }
 
@@ -622,7 +622,16 @@ public class FloatingIslandService extends Service {
         });
         centerExpandedLayout.addView(nextButton);
 
-        // 4. Close/Collapse Button (✕)
+        // 4. Settings Button (⚙)
+        TextView settingsBtn = new TextView(this);
+        settingsBtn.setText("⚙");
+        settingsBtn.setTextColor(Color.parseColor("#94a3b8"));
+        settingsBtn.setTextSize(13);
+        settingsBtn.setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2));
+        settingsBtn.setOnClickListener(v -> openRamboxAction("settings"));
+        centerExpandedLayout.addView(settingsBtn);
+
+        // 5. Close/Collapse Button (✕)
         TextView closeBtn = new TextView(this);
         closeBtn.setText("✕");
         closeBtn.setTextColor(Color.parseColor("#64748b"));
@@ -673,11 +682,19 @@ public class FloatingIslandService extends Service {
         headerTv.setLayoutParams(hParams);
         row1.addView(headerTv);
 
+        TextView settingsBtn = new TextView(this);
+        settingsBtn.setText("⚙");
+        settingsBtn.setTextColor(Color.parseColor("#94a3b8"));
+        settingsBtn.setTextSize(12);
+        settingsBtn.setPadding(dpToPx(6), 0, dpToPx(6), 0);
+        settingsBtn.setOnClickListener(v -> openRamboxAction("settings"));
+        row1.addView(settingsBtn);
+
         TextView closeBtn = new TextView(this);
         closeBtn.setText("✕");
         closeBtn.setTextColor(Color.parseColor("#64748b"));
         closeBtn.setTextSize(11);
-        closeBtn.setPadding(dpToPx(6), 0, dpToPx(2), 0);
+        closeBtn.setPadding(dpToPx(4), 0, dpToPx(2), 0);
         closeBtn.setOnClickListener(v -> collapseIsland());
         row1.addView(closeBtn);
         cornerExpandedLayout.addView(row1);
@@ -848,6 +865,7 @@ public class FloatingIslandService extends Service {
     private void bringRamboxToFront() {
         try {
             Intent intent = new Intent(this, MainActivity.class);
+            intent.setAction("ACTION_OPEN_RAMBOX");
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent pi = PendingIntent.getActivity(
                 this,
@@ -862,6 +880,29 @@ public class FloatingIslandService extends Service {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error bringing Rambox to front", e);
+        }
+    }
+
+    private void openRamboxAction(String action) {
+        try {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setAction("ACTION_RAMBOX_ACTION");
+            intent.putExtra("RAMBOX_ACTION", action);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(
+                this,
+                97,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+            );
+            try {
+                pi.send();
+            } catch (Exception ignored) {
+                startActivity(intent);
+            }
+            collapseIsland();
+        } catch (Exception e) {
+            Log.e(TAG, "Error opening Rambox action from floating island", e);
         }
     }
 

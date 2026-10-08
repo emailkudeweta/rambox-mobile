@@ -6,9 +6,8 @@ import MobileWebview from './components/MobileWebview';
 import ServicesModal from './components/ServicesModal';
 import SettingsModal, { DEFAULT_PREFERENCES } from './components/SettingsModal';
 import AutoUpdaterModal from './components/AutoUpdaterModal';
-import DynamicIsland from './ui/DynamicIsland';
 import { launchAppDirectly, getInstalledPackage } from './utils/nativeLauncher';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Plus, Settings } from 'lucide-react';
 
 export default function App() {
   const [preferences, setPreferences] = useState(() => {
@@ -92,6 +91,44 @@ export default function App() {
         window.RamboxNative.setActiveApp(currentApp.name, pkg);
       } catch (e) {}
     }
+  }, [activeAppId, apps]);
+
+  // Listen for navigation and modal commands dispatched from the Native Camera Dynamic Island
+  useEffect(() => {
+    const handleFloatingNav = (e) => {
+      const direction = e.detail?.direction;
+      if (!apps || apps.length === 0) return;
+      const activeIndex = apps.findIndex(a => a.id === activeAppId);
+      if (direction === 'next') {
+        const nextIdx = (activeIndex + 1) % apps.length;
+        const targetApp = apps[nextIdx];
+        setActiveAppId(targetApp.id);
+        launchAppDirectly(targetApp);
+      } else if (direction === 'prev') {
+        const prevIdx = (activeIndex - 1 + apps.length) % apps.length;
+        const targetApp = apps[prevIdx];
+        setActiveAppId(targetApp.id);
+        launchAppDirectly(targetApp);
+      }
+    };
+
+    const handleRamboxAction = (e) => {
+      const action = e.detail?.action;
+      if (action === 'services' || action === 'toggle-services') {
+        setIsServicesModalOpen(prev => (action === 'toggle-services' ? !prev : true));
+      } else if (action === 'settings') {
+        setIsSettingsOpen(true);
+      } else if (action === 'updates') {
+        setIsManualUpdateOpen(true);
+      }
+    };
+
+    window.addEventListener('floating-island-nav', handleFloatingNav);
+    window.addEventListener('rambox-action', handleRamboxAction);
+    return () => {
+      window.removeEventListener('floating-island-nav', handleFloatingNav);
+      window.removeEventListener('rambox-action', handleRamboxAction);
+    };
   }, [activeAppId, apps]);
 
   // Persistence of apps & active app
@@ -218,21 +255,6 @@ export default function App() {
     <div className={`w-full h-full flex flex-col ${isAmoled ? 'bg-black' : 'bg-[#0c0c14]'} text-white relative overflow-hidden select-none`}>
       
       {/* ============================================================== */}
-      {/* 1. DYNAMIC ISLAND (Draggable Anywhere + Settings Button)        */}
-      {/* ============================================================== */}
-      <DynamicIsland 
-        apps={apps}
-        activeAppId={activeAppId}
-        setActiveAppId={setActiveAppId}
-        onRemoveApp={handleRemoveApp}
-        onOpenServicesModal={() => setIsServicesModalOpen(true)}
-        onOpenSettingsModal={() => setIsSettingsOpen(true)}
-        onCheckUpdates={() => setIsManualUpdateOpen(true)}
-        onReloadActive={handleReloadActive}
-        hideLabels={preferences.hideLabels}
-      />
-
-      {/* ============================================================== */}
       {/* FLOATING OVERLAY PERMISSION WARNING BANNER                     */}
       {/* ============================================================== */}
       {!hasOverlayPermission && (
@@ -241,7 +263,7 @@ export default function App() {
             <ShieldAlert size={16} className="text-amber-400 shrink-0" />
             <div>
               <p className="font-bold text-amber-200 text-[11px] leading-tight">Izin Dynamic Island Diperlukan</p>
-              <p className="text-[10px] text-amber-300/80 leading-tight">Aktifkan agar Dynamic Island tetap muncul di launcher saat aplikasi diminimize.</p>
+              <p className="text-[10px] text-amber-300/80 leading-tight">Aktifkan agar Dynamic Island tetap muncul di dekat kamera depan di semua layar.</p>
             </div>
           </div>
           <button
@@ -258,10 +280,10 @@ export default function App() {
       )}
 
       {/* ============================================================== */}
-      {/* 2. PERSISTENT WEBVIEW STACK                                    */}
-      {/* pt-14 memastikan konten tidak tertutup saat island di atas     */}
+      {/* 1. PERSISTENT WEBVIEW STACK                                    */}
+      {/* pt-8 memberi ruang kamera System UI & pb-14 untuk bottom dock  */}
       {/* ============================================================== */}
-      <div className="flex-1 w-full h-full relative overflow-hidden pt-14">
+      <div className="flex-1 w-full h-full relative overflow-hidden pt-8 pb-14">
         {apps.map((app) => {
           const isActive = app.id === activeAppId;
           return (
@@ -287,6 +309,60 @@ export default function App() {
             </div>
           );
         })}
+      </div>
+
+      {/* ============================================================== */}
+      {/* 2. FLOATING BOTTOM QUICK DOCK (Akses Cepat Layanan & Settings) */}
+      {/* ============================================================== */}
+      <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center px-3 py-1.5 rounded-full bg-[#121220]/90 backdrop-blur-xl border border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.6)] space-x-2 transition-all">
+        {/* App Quick Switcher Pills */}
+        <div className="flex items-center space-x-1.5 max-w-[55vw] overflow-x-auto no-scrollbar py-0.5">
+          {apps.map((app) => {
+            const isActive = app.id === activeAppId;
+            return (
+              <button
+                key={app.id}
+                onClick={() => {
+                  setActiveAppId(app.id);
+                  launchAppDirectly(app);
+                }}
+                className={`w-7 h-7 rounded-xl transition-all flex items-center justify-center shrink-0 ${
+                  isActive 
+                    ? 'bg-indigo-600/80 scale-105 shadow-md shadow-indigo-600/50 ring-2 ring-indigo-400' 
+                    : 'bg-white/10 hover:bg-white/20 opacity-70 hover:opacity-100'
+                }`}
+                title={app.name}
+              >
+                <img 
+                  src={app.iconPath} 
+                  alt={app.name} 
+                  className="w-4 h-4 object-contain"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="w-[1px] h-4 bg-white/20 shrink-0" />
+
+        {/* Tambah Layanan (+) */}
+        <button
+          onClick={() => setIsServicesModalOpen(true)}
+          className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all active:scale-95 shrink-0"
+          title="Tambah Layanan"
+        >
+          <Plus size={15} />
+        </button>
+
+        {/* Pengaturan (⚙) */}
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all active:scale-95 shrink-0"
+          title="Pengaturan"
+        >
+          <Settings size={15} />
+        </button>
       </div>
 
       {/* ============================================================== */}
